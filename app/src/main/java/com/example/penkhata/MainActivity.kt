@@ -159,7 +159,6 @@ fun convertToWords(num: Long): String {
     }
     return rec(num).trim() + " Rupees Only"
 }
-// UPDATED: Returns next Y position
 fun drawMultiLineText(c: Canvas, text: String, x: Float, y: Float, p: Paint, width: Float): Float {
     if(p.measureText(text)<width){c.drawText(text,x,y,p);return y+p.textSize+2f}
     val words=text.split(" "); var line=""; var cy=y
@@ -224,12 +223,18 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("Subject to $sJuris Jurisdiction",m+5,dy+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,dy+35,p)
     val sigY=dy; c.drawLine(c5,sigY,m+w,sigY,bp)
+
+    // FIXED: Line Stop
+    c.drawLine(tX, fTop, tX, sigY, bp) // STOPPED AT TOP OF BOX
+
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+25,p) // FIXED: Top anchor +25
-    c.drawText("Authorised Signatory",sigX,m+h-10,p) // FIXED: Bottom anchor -10
+    c.drawText("For, $sName",sigX,sigY+20,p) // FIXED: +20
+    c.drawText("Auth. Signatory",sigX,m+h-20,p) // FIXED: -20
+
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Computer generated invoice.",midX,m+h+15,p)
+
     doc.finishPage(page); val n=if(isQuote)"Quote" else "Inv"; val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"${n}_${System.currentTimeMillis()}.pdf")
     doc.writeTo(FileOutputStream(f)); doc.close()
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
