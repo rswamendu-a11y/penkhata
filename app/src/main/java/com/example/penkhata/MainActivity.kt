@@ -183,12 +183,11 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
     c.drawText(sAddr, m+5, r1+30, p); c.drawText("GSTIN: $sGst", m+5, r1+45, p)
 
-    // FIXED: DYNAMIC "FLOW" LOGIC
     var currY = r1+rH/2+15
     c.drawText("Buyer: $bName", m+5, currY, p); currY += 15
-    currY = drawMultiLineText(c, bAddr, m+5, currY, p, w/2-10) // Updates Y dynamically
+    currY = drawMultiLineText(c, bAddr, m+5, currY, p, w/2-10)
     if(bGst.isNotEmpty()) { c.drawText("GSTIN: $bGst", m+5, currY, p); currY += 15 }
-    if(bState.isNotEmpty()) { c.drawText("State: $bState", m+5, currY, p) } // Uses updated Y
+    if(bState.isNotEmpty()) { c.drawText("State: $bState", m+5, currY, p) }
 
     val qX=midX+w/4; val line1=r1+rH/4; val line2=r1+2*rH/4; val line3=r1+3*rH/4
     c.drawLine(midX,line1,m+w,line1,bp); c.drawLine(midX,line2,m+w,line2,bp); c.drawLine(midX,line3,m+w,line3,bp); c.drawLine(qX,r1,qX,r1+rH,bp)
