@@ -159,11 +159,13 @@ fun convertToWords(num: Long): String {
     }
     return rec(num).trim() + " Rupees Only"
 }
-fun drawMultiLineText(c: Canvas, text: String, x: Float, y: Float, p: Paint, width: Float) {
-    if(p.measureText(text)<width){c.drawText(text,x,y,p);return}
+// UPDATED: Returns next Y position
+fun drawMultiLineText(c: Canvas, text: String, x: Float, y: Float, p: Paint, width: Float): Float {
+    if(p.measureText(text)<width){c.drawText(text,x,y,p);return y+p.textSize+2f}
     val words=text.split(" "); var line=""; var cy=y
     for(w in words){ if(p.measureText(line+w)<width) line+="$w " else { c.drawText(line,x,cy,p); line="$w "; cy+=p.textSize+2f } }
     if(line.isNotEmpty()) c.drawText(line,x,cy,p)
+    return cy+p.textSize+2f
 }
 
 fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMode: String, delNote: String,
@@ -182,10 +184,12 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
     c.drawText(sAddr, m+5, r1+30, p); c.drawText("GSTIN: $sGst", m+5, r1+45, p)
 
-    c.drawText("Buyer: $bName", m+5, r1+rH/2+15, p)
-    drawMultiLineText(c, bAddr, m+5, r1+rH/2+30, p, w/2-10)
-    if(bGst.isNotEmpty()) c.drawText("GSTIN: $bGst", m+5, r1+rH/2+60, p)
-    if(bState.isNotEmpty()) c.drawText("State: $bState", m+5, r1+rH-12, p)
+    // FIXED: DYNAMIC "FLOW" LOGIC
+    var currY = r1+rH/2+15
+    c.drawText("Buyer: $bName", m+5, currY, p); currY += 15
+    currY = drawMultiLineText(c, bAddr, m+5, currY, p, w/2-10) // Updates Y dynamically
+    if(bGst.isNotEmpty()) { c.drawText("GSTIN: $bGst", m+5, currY, p); currY += 15 }
+    if(bState.isNotEmpty()) { c.drawText("State: $bState", m+5, currY, p) } // Uses updated Y
 
     val qX=midX+w/4; val line1=r1+rH/4; val line2=r1+2*rH/4; val line3=r1+3*rH/4
     c.drawLine(midX,line1,m+w,line1,bp); c.drawLine(midX,line2,m+w,line2,bp); c.drawLine(midX,line3,m+w,line3,bp); c.drawLine(qX,r1,qX,r1+rH,bp)
@@ -222,8 +226,8 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     val sigY=dy; c.drawLine(c5,sigY,m+w,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+35,p) // Y OFFSET INCREASED TO +35
-    c.drawText("Auth. Signatory",sigX,m+h-10,p)
+    c.drawText("For, $sName",sigX,sigY+25,p) // FIXED: Top anchor +25
+    c.drawText("Authorised Signatory",sigX,m+h-10,p) // FIXED: Bottom anchor -10
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Computer generated invoice.",midX,m+h+15,p)
     doc.finishPage(page); val n=if(isQuote)"Quote" else "Inv"; val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"${n}_${System.currentTimeMillis()}.pdf")
