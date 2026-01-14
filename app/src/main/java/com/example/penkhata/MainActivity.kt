@@ -12,17 +12,18 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-// THIS IS THE MISSING IMPORT 👇
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -32,7 +33,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 // --- DATA MODEL ---
-data class InvItem(val desc: String, val hsn: String, val qty: Double, val rate: Double, val unit: String)
+data class InvItem(val desc: String, val serial: String, val hsn: String, val qty: Double, val rate: Double, val unit: String)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,43 +48,75 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainAppScreen() {
-    var currentScreen by remember { mutableStateOf("dashboard") }
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("penkhata_data", Context.MODE_PRIVATE) }
 
-    // SETTINGS DATA
-    var sName by remember { mutableStateOf(prefs.getString("sName", "") ?: "") }
-    var sAddr by remember { mutableStateOf(prefs.getString("sAddr", "") ?: "") }
-    var sGst by remember { mutableStateOf(prefs.getString("sGst", "") ?: "") }
-    var sBank by remember { mutableStateOf(prefs.getString("sBank", "") ?: "") }
-    var sIfsc by remember { mutableStateOf(prefs.getString("sIfsc", "") ?: "") }
-    var sJuris by remember { mutableStateOf(prefs.getString("sJuris", "Jaipur") ?: "") }
+    // App State
+    var savedPin by remember { mutableStateOf(prefs.getString("appPin", "") ?: "") }
+    var isLocked by remember { mutableStateOf(savedPin.isNotEmpty()) }
+    var currentScreen by remember { mutableStateOf("dashboard") }
 
-    fun saveSettings(n: String, a: String, g: String, b: String, i: String, j: String) {
-        prefs.edit().putString("sName",n).putString("sAddr",a).putString("sGst",g).putString("sBank",b).putString("sIfsc",i).putString("sJuris",j).apply()
-        sName=n; sAddr=a; sGst=g; sBank=b; sIfsc=i; sJuris=j
-        Toast.makeText(ctx, "Details Saved", Toast.LENGTH_SHORT).show()
-        currentScreen = "dashboard"
-    }
-
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(selected = currentScreen=="dashboard", onClick = { currentScreen="dashboard" }, icon = { Icon(Icons.Default.ReceiptLong, "Bill") }, label = { Text("Invoice") })
-                NavigationBarItem(selected = currentScreen=="settings", onClick = { currentScreen="settings" }, icon = { Icon(Icons.Default.Settings, "Setup") }, label = { Text("Settings") })
+    if (isLocked) {
+        LoginScreen(savedPin) { isLocked = false }
+    } else {
+        Scaffold(
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(selected = currentScreen=="dashboard", onClick = { currentScreen="dashboard" }, icon = { Icon(Icons.Default.ReceiptLong, "Bill") }, label = { Text("Invoice") })
+                    NavigationBarItem(selected = currentScreen=="settings", onClick = { currentScreen="settings" }, icon = { Icon(Icons.Default.Settings, "Setup") }, label = { Text("Settings") })
+                }
             }
-        }
-    ) { p ->
-        Box(Modifier.padding(p)) {
-            if(currentScreen == "dashboard") DashboardScreen(sName, sAddr, sGst, sBank, sIfsc, sJuris)
-            else SettingsScreen(sName, sAddr, sGst, sBank, sIfsc, sJuris, ::saveSettings)
+        ) { p ->
+            Box(Modifier.padding(p)) {
+                if(currentScreen == "dashboard") DashboardScreen()
+                else SettingsScreen(savedPin) { newPin ->
+                    prefs.edit().putString("appPin", newPin).apply()
+                    savedPin = newPin
+                }
+            }
         }
     }
 }
 
 @Composable
-fun DashboardScreen(sName: String, sAddr: String, sGst: String, sBank: String, sIfsc: String, sJuris: String) {
+fun LoginScreen(correctPin: String, onUnlock: () -> Unit) {
+    var inputPin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxSize().padding(30.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("SECURE LOGIN", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(20.dp))
+        OutlinedTextField(
+            value = inputPin,
+            onValueChange = { inputPin = it; error = false },
+            label = { Text("Enter PIN") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            isError = error,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if(error) Text("Wrong PIN", color = Color.Red)
+        Spacer(Modifier.height(20.dp))
+        Button(onClick = { if(inputPin == correctPin) onUnlock() else error = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("UNLOCK APP")
+        }
+    }
+}
+
+@Composable
+fun DashboardScreen() {
     val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("penkhata_data", Context.MODE_PRIVATE) }
+
+    // Load Settings for PDF Generation
+    val sName = prefs.getString("sName", "") ?: ""
+    val sAddr = prefs.getString("sAddr", "") ?: ""
+    val sGst = prefs.getString("sGst", "") ?: ""
+    val sBank = prefs.getString("sBank", "") ?: ""
+    val sIfsc = prefs.getString("sIfsc", "") ?: ""
+    val sJuris = prefs.getString("sJuris", "India") ?: ""
+
+    // Invoice Inputs
     var invNo by remember { mutableStateOf("1") }
     var date by remember { mutableStateOf(SimpleDateFormat("dd-MMM-yyyy").format(Date())) }
     var payMode by remember { mutableStateOf("") }
@@ -94,18 +127,17 @@ fun DashboardScreen(sName: String, sAddr: String, sGst: String, sBank: String, s
     var bGst by remember { mutableStateOf("") }
     var bState by remember { mutableStateOf("") }
 
+    // Item Inputs
     var iDesc by remember { mutableStateOf("") }
+    var iSerial by remember { mutableStateOf("") } // NEW
     var iHsn by remember { mutableStateOf("") }
     var iQty by remember { mutableStateOf("") }
     var iRate by remember { mutableStateOf("") }
     var iUnit by remember { mutableStateOf("pcs") }
     var items by remember { mutableStateOf(listOf<InvItem>()) }
 
-    var labour by remember { mutableStateOf("") }
-    var cartage by remember { mutableStateOf("") }
-
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-        Text("PenKhata Billing", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text("New Invoice", fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
         Card(Modifier.padding(vertical=5.dp)) {
             Column(Modifier.padding(10.dp)) {
@@ -137,61 +169,90 @@ fun DashboardScreen(sName: String, sAddr: String, sGst: String, sBank: String, s
             Column(Modifier.padding(10.dp)) {
                 Text("Add Item", fontWeight = FontWeight.Bold)
                 OutlinedTextField(iDesc, {iDesc=it}, label={Text("Description")}, modifier=Modifier.fillMaxWidth())
+                // NEW SERIAL/IMEI FIELD
+                OutlinedTextField(iSerial, {iSerial=it}, label={Text("Serial / IMEI No")}, modifier=Modifier.fillMaxWidth())
+
                 Row {
                     OutlinedTextField(iHsn, {iHsn=it}, label={Text("HSN")}, modifier=Modifier.weight(1f))
                     Spacer(Modifier.width(5.dp))
-                    OutlinedTextField(iUnit, {iUnit=it}, label={Text("Per (Unit)")}, modifier=Modifier.weight(1f))
+                    OutlinedTextField(iUnit, {iUnit=it}, label={Text("Unit")}, modifier=Modifier.weight(1f))
                 }
                 Row {
                     OutlinedTextField(iQty, {iQty=it}, label={Text("Qty")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f))
                     Spacer(Modifier.width(5.dp))
                     OutlinedTextField(iRate, {iRate=it}, label={Text("Rate")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f))
                 }
-                Button(onClick={if(iDesc.isNotEmpty()){items=items+InvItem(iDesc,iHsn,iQty.toDoubleOrNull()?:0.0,iRate.toDoubleOrNull()?:0.0,iUnit); iDesc=""}}, modifier=Modifier.fillMaxWidth()) { Text("ADD ITEM") }
+                Button(onClick={
+                    if(iDesc.isNotEmpty()){
+                        items=items+InvItem(iDesc,iSerial,iHsn,iQty.toDoubleOrNull()?:0.0,iRate.toDoubleOrNull()?:0.0,iUnit)
+                        iDesc=""; iSerial=""; iQty=""; iRate=""
+                    }
+                }, modifier=Modifier.fillMaxWidth()) { Text("ADD ITEM") }
             }
         }
-        items.forEachIndexed{i,it->Text("${i+1}. ${it.desc} - ${it.qty} ${it.unit}")}
 
-        Card(Modifier.padding(vertical=5.dp)) {
-            Column(Modifier.padding(10.dp)) {
-                Row {
-                    OutlinedTextField(labour, {labour=it}, label={Text("Labour Charge")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f))
-                    Spacer(Modifier.width(5.dp))
-                    OutlinedTextField(cartage, {cartage=it}, label={Text("Cartage")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f))
-                }
-            }
-        }
+        items.forEachIndexed{i,it->Text("${i+1}. ${it.desc} (${it.qty})")}
 
         Spacer(Modifier.height(20.dp))
         Button(onClick={
             if(sName.isEmpty()) Toast.makeText(ctx,"Setup Settings First!",Toast.LENGTH_LONG).show()
-            else createGridPdf(ctx, invNo, date, payMode, delNote, sName, sAddr, sGst, sBank, sIfsc, sJuris, bName, bAddr, bGst, bState, items, labour.toDoubleOrNull()?:0.0, cartage.toDoubleOrNull()?:0.0)
+            else createFinalPdf(ctx, invNo, date, payMode, delNote, sName, sAddr, sGst, sBank, sIfsc, sJuris, bName, bAddr, bGst, bState, items)
         }, modifier=Modifier.fillMaxWidth(), colors=ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("GENERATE PDF") }
         Spacer(Modifier.height(60.dp))
     }
 }
 
 @Composable
-fun SettingsScreen(n: String, a: String, g: String, b: String, i: String, j: String, onSave: (String,String,String,String,String,String)->Unit) {
-    var sName by remember { mutableStateOf(n) }; var sAddr by remember { mutableStateOf(a) }
-    var sGst by remember { mutableStateOf(g) }; var sBank by remember { mutableStateOf(b) }; var sIfsc by remember { mutableStateOf(i) }; var sJuris by remember { mutableStateOf(j) }
-    Column(Modifier.padding(16.dp)) {
-        Text("Seller Settings", fontSize=24.sp, fontWeight=FontWeight.Bold)
-        OutlinedTextField(sName, {sName=it}, label={Text("Firm Name")}, modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(sAddr, {sAddr=it}, label={Text("Address (City/State/Pin)")}, modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(sGst, {sGst=it}, label={Text("GSTIN")}, modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(sBank, {sBank=it}, label={Text("Bank Name & A/c No")}, modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(sIfsc, {sIfsc=it}, label={Text("IFSC Code")}, modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(sJuris, {sJuris=it}, label={Text("Jurisdiction City")}, modifier=Modifier.fillMaxWidth())
+fun SettingsScreen(currentPin: String, onPinSave: (String)->Unit) {
+    val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("penkhata_data", Context.MODE_PRIVATE) }
+
+    var sName by remember { mutableStateOf(prefs.getString("sName", "") ?: "") }
+    var sAddr by remember { mutableStateOf(prefs.getString("sAddr", "") ?: "") }
+    var sGst by remember { mutableStateOf(prefs.getString("sGst", "") ?: "") }
+    var sBank by remember { mutableStateOf(prefs.getString("sBank", "") ?: "") }
+    var sIfsc by remember { mutableStateOf(prefs.getString("sIfsc", "") ?: "") }
+    var sJuris by remember { mutableStateOf(prefs.getString("sJuris", "") ?: "") }
+
+    var newPin by remember { mutableStateOf(currentPin) }
+
+    Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+        Text("Settings", fontSize=24.sp, fontWeight=FontWeight.Bold)
+
+        Card(Modifier.padding(top=10.dp)) {
+            Column(Modifier.padding(10.dp)) {
+                Text("App Security", fontWeight = FontWeight.Bold)
+                OutlinedTextField(newPin, {newPin=it}, label={Text("Set Login PIN")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword), modifier=Modifier.fillMaxWidth())
+                Text("Leave empty to disable PIN", fontSize=12.sp, color=Color.Gray)
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        Card {
+            Column(Modifier.padding(10.dp)) {
+                Text("Seller Details", fontWeight = FontWeight.Bold)
+                OutlinedTextField(sName, {sName=it}, label={Text("Firm Name")}, modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(sAddr, {sAddr=it}, label={Text("Address")}, modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(sGst, {sGst=it}, label={Text("GSTIN")}, modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(sBank, {sBank=it}, label={Text("Bank Name & A/c")}, modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(sIfsc, {sIfsc=it}, label={Text("IFSC Code")}, modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(sJuris, {sJuris=it}, label={Text("Jurisdiction City")}, modifier=Modifier.fillMaxWidth())
+            }
+        }
         Spacer(Modifier.height(20.dp))
-        Button(onClick={onSave(sName,sAddr,sGst,sBank,sIfsc,sJuris)}, modifier=Modifier.fillMaxWidth()) { Text("SAVE") }
+        Button(onClick={
+            prefs.edit().putString("sName",sName).putString("sAddr",sAddr).putString("sGst",sGst)
+                .putString("sBank",sBank).putString("sIfsc",sIfsc).putString("sJuris",sJuris).apply()
+            onPinSave(newPin)
+            Toast.makeText(ctx, "Settings Saved!", Toast.LENGTH_SHORT).show()
+        }, modifier=Modifier.fillMaxWidth()) { Text("SAVE ALL SETTINGS") }
     }
 }
 
-fun createGridPdf(ctx: Context, invNo: String, date: String, payMode: String, delNote: String,
+fun createFinalPdf(ctx: Context, invNo: String, date: String, payMode: String, delNote: String,
                   sName: String, sAddr: String, sGst: String, sBank: String, sIfsc: String, sJuris: String,
-                  bName: String, bAddr: String, bGst: String, bState: String, items: List<InvItem>,
-                  labour: Double, cartage: Double) {
+                  bName: String, bAddr: String, bGst: String, bState: String, items: List<InvItem>) {
     val doc = PdfDocument()
     val page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, 1).create())
     val c = page.canvas
@@ -205,7 +266,7 @@ fun createGridPdf(ctx: Context, invNo: String, date: String, payMode: String, de
     c.drawText("GST INVOICE", midX, m+15, p)
     c.drawLine(m, m+20, m+w, m+20, bp)
 
-    // Grid Layout (Top)
+    // Grid Layout
     val r1=m+20; val rH=120f
     c.drawLine(midX, r1, midX, r1+rH, bp) // Vert Split
     c.drawLine(m, r1+rH/2, m+w, r1+rH/2, bp) // Horiz Split
@@ -224,12 +285,10 @@ fun createGridPdf(ctx: Context, invNo: String, date: String, payMode: String, de
     c.drawText(bAddr, m+5, r1+rH/2+30, p)
     c.drawText("GSTIN: $bGst  State: $bState", m+5, r1+rH/2+45, p)
 
-    // Meta Data (Right Side)
+    // Right Side Data
     val qX = midX + w/4
     val line1 = r1+rH/4; val line2 = r1 + 2*rH/4; val line3 = r1 + 3*rH/4
-    c.drawLine(midX, line1, m+w, line1, bp)
-    c.drawLine(midX, line2, m+w, line2, bp)
-    c.drawLine(midX, line3, m+w, line3, bp)
+    c.drawLine(midX, line1, m+w, line1, bp); c.drawLine(midX, line2, m+w, line2, bp); c.drawLine(midX, line3, m+w, line3, bp)
     c.drawLine(qX, r1, qX, r1+rH, bp)
 
     fun cell(l:String, v:String, x:Float, y:Float) { c.drawText(l, x+2, y+12, p); p.isFakeBoldText=true; c.drawText(v, qX+2, y+12, p); p.isFakeBoldText=false }
@@ -258,7 +317,15 @@ fun createGridPdf(ctx: Context, invNo: String, date: String, payMode: String, de
     items.forEachIndexed { i, it ->
         val amt = it.qty * it.rate; sub+=amt
         c.drawText("${i+1}", c1+w1/2, y+14, p)
-        p.textAlign=Paint.Align.LEFT; c.drawText(it.desc, c2+5, y+14, p)
+        p.textAlign=Paint.Align.LEFT
+
+        // SERIAL NO LOGIC HERE
+        c.drawText(it.desc, c2+5, y+14, p)
+        if(it.serial.isNotEmpty()) {
+            val pSmall = Paint(p); pSmall.textSize = 8f
+            c.drawText("Sr/IMEI: ${it.serial}", c2+5, y+24, pSmall)
+        }
+
         p.textAlign=Paint.Align.CENTER; c.drawText(it.hsn, c3+w3/2, y+14, p)
         c.drawText(it.qty.toString(), c4+w4/2, y+14, p)
         c.drawText(it.rate.toString(), c5+w5/2, y+14, p)
@@ -268,23 +335,20 @@ fun createGridPdf(ctx: Context, invNo: String, date: String, payMode: String, de
     }
     val fTop = m+h-200f; vLine(tTop+hH, fTop); c.drawLine(m, fTop, m+w, fTop, bp)
 
-    // Totals (Right Side)
+    // Totals
     y=fTop; val tX=c7; p.textAlign=Paint.Align.RIGHT
     fun row(l:String, v:String) { c.drawText(l, tX-10, y+14, p); c.drawText(v, m+w-5, y+14, p); c.drawLine(tX, y, tX, y+20, bp); c.drawLine(tX, y+20, m+w, y+20, bp); y+=20f }
 
     row("Total", String.format("%.2f", sub))
-    if(labour>0) row("Labour Charges", String.format("%.2f", labour))
-    if(cartage>0) row("Cartage Service", String.format("%.2f", cartage))
-    val taxable = sub+labour+cartage
-    val tax = taxable*0.18 // 18% assumption
+    val tax = sub*0.18 // 18% assumption
     row("SGST (9%)", String.format("%.2f", tax/2))
     row("CGST (9%)", String.format("%.2f", tax/2))
-    val gTotal = taxable+tax
+    val gTotal = sub+tax
     p.isFakeBoldText=true
     c.drawText("Grand Total", tX-10, y+14, p); c.drawText("₹ ${String.format("%.0f", gTotal)}", m+w-5, y+14, p)
     c.drawLine(tX, y, tX, m+h, bp)
 
-    // Footer (Left Side)
+    // Footer (Corrected)
     val fY = fTop+20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount in words: ${convertNumToWords(gTotal.toLong())} Only", m+5, fY, p)
     val bankY = fY+40; c.drawLine(m, bankY, tX, bankY, bp)
@@ -293,21 +357,27 @@ fun createGridPdf(ctx: Context, invNo: String, date: String, payMode: String, de
 
     val decY = bankY+60; c.drawLine(m, decY, tX, decY, bp)
     p.isFakeBoldText=false; p.textSize=8f
-    c.drawText("Declaration: We declare this invoice shows the actual price of goods.", m+5, decY+15, p)
-    c.drawText("Subject to $sJuris Jurisdiction", m+5, decY+25, p)
+    c.drawText("Declaration: We declare this invoice shows the actual price of goods.", m+5, decY+12, p)
+    c.drawText("Subject to $sJuris Jurisdiction", m+5, decY+22, p)
+    // ADDED LINE
+    p.isFakeBoldText=true
+    c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED", m+5, decY+35, p)
 
-    // Computer Gen Note
+    // Signatory (Aligned)
     val sigY = decY; c.drawLine(c5, sigY, tX, sigY, bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
-    c.drawText("For, $sName", (c5+tX)/2+30, sigY+15, p)
+    val signCenterX = (c5 + tX) / 2
+    c.drawText("For, $sName", signCenterX, sigY+15, p) // Centered in Box
+    c.drawText("Auth. Signatory", signCenterX, m+h-10, p)
+
+    // Computer Gen Note (Bottom Center)
     p.isFakeBoldText=false; p.textSize=8f
-    c.drawText("Computer generated invoice", (c5+tX)/2+30, m+h-20, p)
-    c.drawText("No signature required", (c5+tX)/2+30, m+h-10, p)
+    c.drawText("Computer generated invoice. No signature required.", midX, m+h-5, p)
 
     doc.finishPage(page)
     val f = File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "PenKhata_${System.currentTimeMillis()}.pdf")
     doc.writeTo(FileOutputStream(f)); doc.close()
-    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type="application/pdf"; putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", f)); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share"))
+    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type="application/pdf"; putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", f)); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share Invoice"))
 }
 
 fun convertNumToWords(n: Long): String { return "$n Rupees" }
