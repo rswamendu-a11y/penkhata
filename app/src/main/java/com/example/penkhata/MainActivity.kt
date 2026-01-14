@@ -181,14 +181,17 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     p.textAlign=Paint.Align.LEFT; p.textSize=12f; p.isFakeBoldText=true
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
     c.drawText(sAddr, m+5, r1+30, p); c.drawText("GSTIN: $sGst", m+5, r1+45, p)
+
     c.drawText("Buyer: $bName", m+5, r1+rH/2+15, p)
     drawMultiLineText(c, bAddr, m+5, r1+rH/2+30, p, w/2-10)
     if(bGst.isNotEmpty()) c.drawText("GSTIN: $bGst", m+5, r1+rH/2+60, p)
     if(bState.isNotEmpty()) c.drawText("State: $bState", m+5, r1+rH-12, p)
+
     val qX=midX+w/4; val line1=r1+rH/4; val line2=r1+2*rH/4; val line3=r1+3*rH/4
     c.drawLine(midX,line1,m+w,line1,bp); c.drawLine(midX,line2,m+w,line2,bp); c.drawLine(midX,line3,m+w,line3,bp); c.drawLine(qX,r1,qX,r1+rH,bp)
     fun cell(l:String, v:String, x:Float, y:Float) { c.drawText(l,x+2,y+12,p); p.isFakeBoldText=true; c.drawText(v,qX+2,y+12,p); p.isFakeBoldText=false }
     cell("No",invNo,midX,r1); cell("Date",date,midX,line1); cell("Note",delNote,midX,line2); cell("Terms",payMode,midX,line3)
+
     val tTop=r1+rH; val hH=20f; c.drawLine(m,tTop,m+w,tTop,bp); c.drawLine(m,tTop+hH,m+w,tTop+hH,bp)
     val c1=m;val w1=30f;val c2=c1+w1;val w2=200f;val c3=c2+w2;val w3=50f;val c4=c3+w3;val w4=60f;val c5=c4+w4;val w5=70f;val c6=c5+w5;val w6=50f;val c7=c6+w6;val w7=95f
     fun vLine(top:Float,bot:Float){c.drawLine(c2,top,c2,bot,bp);c.drawLine(c3,top,c3,bot,bp);c.drawLine(c4,top,c4,bot,bp);c.drawLine(c5,top,c5,bot,bp);c.drawLine(c6,top,c6,bot,bp);c.drawLine(c7,top,c7,bot,bp)}
@@ -219,7 +222,7 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     val sigY=dy; c.drawLine(c5,sigY,m+w,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+50,p) // Y INCREASED TO +50
+    c.drawText("For, $sName",sigX,sigY+35,p) // Y OFFSET INCREASED TO +35
     c.drawText("Auth. Signatory",sigX,m+h-10,p)
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Computer generated invoice.",midX,m+h+15,p)
