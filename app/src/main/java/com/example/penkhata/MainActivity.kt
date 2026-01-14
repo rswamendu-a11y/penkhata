@@ -12,7 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.KeyboardOptions // CRITICAL IMPORT
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -32,7 +32,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- DATA MODEL (Added taxRate) ---
+// --- DATA MODEL ---
 data class InvItem(val desc: String, val serial: String, val hsn: String, val qty: Double, val rate: Double, val unit: String, val taxRate: Double)
 
 class MainActivity : ComponentActivity() {
@@ -134,7 +134,7 @@ fun DashboardScreen() {
     var iQty by remember { mutableStateOf("") }
     var iRate by remember { mutableStateOf("") }
     var iUnit by remember { mutableStateOf("pcs") }
-    var iTax by remember { mutableStateOf(defTax) } // Tax Per Item
+    var iTax by remember { mutableStateOf(defTax) }
     var items by remember { mutableStateOf(listOf<InvItem>()) }
 
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
@@ -195,7 +195,7 @@ fun DashboardScreen() {
             }
         }
 
-        items.forEachIndexed{i,it->Text("${i+1}. ${it.desc} (Rate: ${it.rate}, Tax: ${it.taxRate}%)")}
+        items.forEachIndexed{i,it->Text("${i+1}. ${it.desc} (Inc Rate: ${it.rate})")}
 
         Spacer(Modifier.height(20.dp))
         Button(onClick={
@@ -320,22 +320,27 @@ fun createFinalPdf(ctx: Context, invNo: String, date: String, payMode: String, d
 
     // Items
     p.isFakeBoldText=false; var y=tTop+hH
-    var totalInclusive = 0.0
+
+    // --- MATH VARIABLES ---
     var totalTaxable = 0.0
     var totalCGST = 0.0
     var totalSGST = 0.0
+    var grandTotal = 0.0
 
     items.forEachIndexed { i, it ->
-        val rowTotalInclusive = it.qty * it.rate
-        // REVERSE TAX CALCULATION
-        val taxFactor = 1 + (it.taxRate / 100)
-        val rowTaxable = rowTotalInclusive / taxFactor
-        val rowTaxAmt = rowTotalInclusive - rowTaxable
+        // REVERSE CALCULATION LOGIC
+        val inclusiveRate = it.rate // User Input (35999)
+        val taxFactor = 1 + (it.taxRate / 100) // 1.18
 
-        totalInclusive += rowTotalInclusive
-        totalTaxable += rowTaxable
-        totalCGST += (rowTaxAmt / 2)
-        totalSGST += (rowTaxAmt / 2)
+        val taxableRate = inclusiveRate / taxFactor // 30507.63
+        val taxableAmount = taxableRate * it.qty // 30507.63 * 1
+
+        val taxAmount = (inclusiveRate * it.qty) - taxableAmount
+
+        totalTaxable += taxableAmount
+        totalCGST += (taxAmount / 2)
+        totalSGST += (taxAmount / 2)
+        grandTotal += (inclusiveRate * it.qty)
 
         c.drawText("${i+1}", c1+w1/2, y+14, p)
         p.textAlign=Paint.Align.LEFT
@@ -346,9 +351,12 @@ fun createFinalPdf(ctx: Context, invNo: String, date: String, payMode: String, d
         }
         p.textAlign=Paint.Align.CENTER; c.drawText(it.hsn, c3+w3/2, y+14, p)
         c.drawText(it.qty.toString(), c4+w4/2, y+14, p)
-        c.drawText(it.rate.toString(), c5+w5/2, y+14, p)
+
+        // DISPLAY EXCLUSIVE RATE AND AMOUNT
+        c.drawText(String.format("%.2f", taxableRate), c5+w5/2, y+14, p) // Rate Col
         c.drawText(it.unit, c6+w6/2, y+14, p)
-        p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f", rowTotalInclusive), m+w-5, y+14, p)
+        p.textAlign=Paint.Align.RIGHT
+        c.drawText(String.format("%.2f", taxableAmount), m+w-5, y+14, p) // Amount Col
         y+=20f
     }
     val fTop = m+h-200f; vLine(tTop+hH, fTop); c.drawLine(m, fTop, m+w, fTop, bp)
@@ -357,19 +365,17 @@ fun createFinalPdf(ctx: Context, invNo: String, date: String, payMode: String, d
     y=fTop; val tX=c7; p.textAlign=Paint.Align.RIGHT
     fun row(l:String, v:String) { c.drawText(l, tX-10, y+14, p); c.drawText(v, m+w-5, y+14, p); c.drawLine(tX, y, tX, y+20, bp); c.drawLine(tX, y+20, m+w, y+20, bp); y+=20f }
 
-    //row("Taxable Value", String.format("%.2f", totalTaxable))
-    // You can show Taxable Value if needed, but for simplicity showing Tax Breakdown
-    row("Total Value", String.format("%.2f", totalInclusive))
-    row("Total SGST", String.format("%.2f", totalSGST))
-    row("Total CGST", String.format("%.2f", totalCGST))
+    row("Total Value", String.format("%.2f", totalTaxable))
+    row("SGST", String.format("%.2f", totalSGST))
+    row("CGST", String.format("%.2f", totalCGST))
 
     p.isFakeBoldText=true
-    c.drawText("Grand Total", tX-10, y+14, p); c.drawText("₹ ${String.format("%.0f", totalInclusive)}", m+w-5, y+14, p)
+    c.drawText("Grand Total", tX-10, y+14, p); c.drawText("₹ ${String.format("%.0f", grandTotal)}", m+w-5, y+14, p)
     c.drawLine(tX, y, tX, m+h, bp)
 
     // Footer (Left Side)
     val fY = fTop+20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
-    c.drawText("Amount in words: ${convertNumToWords(totalInclusive.toLong())} Only", m+5, fY, p)
+    c.drawText("Amount in words: ${convertNumToWords(grandTotal.toLong())} Only", m+5, fY, p)
     val bankY = fY+40; c.drawLine(m, bankY, tX, bankY, bp)
     c.drawText("Bank Details:", m+5, bankY+15, p)
     p.isFakeBoldText=true; c.drawText("$sBank, IFSC: $sIfsc", m+5, bankY+30, p)
