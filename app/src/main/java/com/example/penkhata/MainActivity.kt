@@ -98,7 +98,7 @@ fun InvoiceScreen(isQuote: Boolean) {
 
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Text("New Invoice", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(if(isQuote) "QUOTATION" else "TAX INVOICE", fontSize = 24.sp, fontWeight = FontWeight.Bold, color=Color.Blue)
             TextButton(onClick = { invNo="1"; bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx, "Cleared", Toast.LENGTH_SHORT).show() }) { Text("RESET", color = Color.Red) }
         }
         Card(Modifier.padding(vertical=5.dp)) { Column(Modifier.padding(10.dp)) {
@@ -176,7 +176,7 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER; p.textSize=14f
     c.drawText(if(isQuote) "QUOTATION" else "TAX INVOICE", midX, m+15, p)
     c.drawLine(m, m+20, m+w, m+20, bp)
-    val r1=m+20; val rH=145f // HEIGHT INCREASED TO 145f
+    val r1=m+20; val rH=145f
     c.drawLine(midX, r1, midX, r1+rH, bp); c.drawLine(m, r1+rH/2, m+w, r1+rH/2, bp)
     p.textAlign=Paint.Align.LEFT; p.textSize=12f; p.isFakeBoldText=true
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
