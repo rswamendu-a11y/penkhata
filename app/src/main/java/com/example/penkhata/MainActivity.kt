@@ -213,27 +213,33 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     val fTop=m+h-200f; vLine(tTop+hH,fTop); c.drawLine(m,fTop,m+w,fTop,bp); y=fTop; val tX=c7; p.textAlign=Paint.Align.RIGHT
     fun row(l:String,v:String){c.drawText(l,tX-10,y+14,p);c.drawText(v,m+w-5,y+14,p);c.drawLine(tX,y,tX,y+20,bp);c.drawLine(tX,y+20,m+w,y+20,bp);y+=20f}
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
-    p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p); c.drawLine(tX,y,tX,m+h,bp)
-    val fY=fTop+20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
+    p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
+
+    // CALCULATE SIGNATURE BOX TOP
+    val fY=fTop+20; val by=fY+40; val dy=by+40; val sigY=dy+20 // Approximate height
+
+    // *** FIXED LINE STOP ***
+    // The line now stops at 'y' (which is at the bottom of Grand Total row)
+    c.drawLine(tX, fTop, tX, y, bp)
+
+    // Footer Text (Words, Bank, Decl)
+    p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,fY,p)
-    if(sBank.isNotEmpty()){ val by=fY+40; c.drawLine(m,by,tX,by,bp); c.drawText("Bank Details:",m+5,by-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,by-10,p) }
-    val dy=fY+80; c.drawLine(m,dy,tX,dy,bp); p.isFakeBoldText=false; p.textSize=8f
+    if(sBank.isNotEmpty()){ c.drawLine(m,by,tX,by,bp); c.drawText("Bank Details:",m+5,by-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,by-10,p) }
+    c.drawLine(m,dy,tX,dy,bp); p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Declaration: We declare this invoice shows the actual price of goods.",m+5,dy+12,p)
     c.drawText("Subject to $sJuris Jurisdiction",m+5,dy+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,dy+35,p)
-    val sigY=dy; c.drawLine(c5,sigY,m+w,sigY,bp)
 
-    // FIXED: Line Stop
-    c.drawLine(tX, fTop, tX, sigY, bp) // STOPPED AT TOP OF BOX
-
+    // SIGNATURE BOX (FULL WIDTH BOTTOM RIGHT)
+    c.drawLine(c5,dy,m+w,dy,bp) // Top line of box
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+20,p) // FIXED: +20
-    c.drawText("Auth. Signatory",sigX,m+h-20,p) // FIXED: -20
+    c.drawText("For, $sName",sigX,dy+20,p)
+    c.drawText("Authorised Signatory",sigX,m+h-10,p)
 
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Computer generated invoice.",midX,m+h+15,p)
-
     doc.finishPage(page); val n=if(isQuote)"Quote" else "Inv"; val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"${n}_${System.currentTimeMillis()}.pdf")
     doc.writeTo(FileOutputStream(f)); doc.close()
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
