@@ -35,6 +35,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.max
 
 data class InvItem(val desc: String, val serial: String, val hsn: String, val qty: Double, val rate: Double, val unit: String, val taxRate: Double)
 data class LedgerEntry(val id: Long, val date: String, val party: String, val type: String, val amount: Double, val desc: String)
@@ -98,7 +99,7 @@ fun InvoiceScreen(isQuote: Boolean) {
 
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Text(if(isQuote) "QUOTATION" else "TAX INVOICE", fontSize = 24.sp, fontWeight = FontWeight.Bold, color=Color.Blue)
+            Text("New Invoice", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             TextButton(onClick = { invNo="1"; bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx, "Cleared", Toast.LENGTH_SHORT).show() }) { Text("RESET", color = Color.Red) }
         }
         Card(Modifier.padding(vertical=5.dp)) { Column(Modifier.padding(10.dp)) {
@@ -181,7 +182,10 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawLine(midX, r1, midX, r1+rH, bp); c.drawLine(m, r1+rH/2, m+w, r1+rH/2, bp)
     p.textAlign=Paint.Align.LEFT; p.textSize=12f; p.isFakeBoldText=true
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
-    c.drawText(sAddr, m+5, r1+30, p); c.drawText("GSTIN: $sGst", m+5, r1+45, p)
+
+    var sY = r1+30
+    sY = drawMultiLineText(c, sAddr, m+5, sY, p, w/2-10)
+    c.drawText("GSTIN: $sGst", m+5, sY+15, p)
 
     var currY = r1+rH/2+15
     c.drawText("Buyer: $bName", m+5, currY, p); currY += 15
@@ -217,15 +221,9 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
 
     // SCOPE FIX: Define y tracker
     var footerY = fTop + 20
-    val fY = footerY
-
-    // *** LINE STOP ***
-    var sigTop = fY + 80
-    if (sBank.isNotEmpty()) sigTop += 40
-    c.drawLine(tX, fTop, tX, sigTop, bp)
 
     p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
-    c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,fY,p)
+    c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,footerY,p)
 
     if(sBank.isNotEmpty()){
         val bankY = footerY + 40
@@ -234,7 +232,6 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
         p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p)
         footerY += 40
     }
-    // FIXED: Using 'decY' properly now
     val decY = footerY + 40
     c.drawLine(m,decY,tX,decY,bp)
     p.isFakeBoldText=false; p.textSize=8f
@@ -242,11 +239,14 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("Subject to $sJuris Jurisdiction",m+5,decY+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,decY+35,p)
 
-    val sigY=decY // FIXED: Using decY to define sigY
-    c.drawLine(c5,sigY,m+w,sigY,bp)
+    // FIXED: DYNAMIC MAX HEIGHT CALCULATION
+    // Ensures Signature box always starts below BOTH (Dec and Grand Total)
+    val sigY = max(decY, y)
 
-    // FIXED: LINE STOP
+    // LINE STOP & BOX
     c.drawLine(tX, fTop, tX, sigY, bp)
+    c.drawLine(c5, sigY, m+w, sigY, bp)
+    c.drawLine(c5, sigY, c5, m+h, bp) // Missing Left Wall added
 
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
