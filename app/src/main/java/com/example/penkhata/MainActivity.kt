@@ -215,7 +215,7 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
 
-    // SCOPE FIX + LINE STOP FIX
+    // SCOPE FIX: Define y tracker
     var footerY = fTop + 20
     val fY = footerY
 
@@ -234,14 +234,20 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
         p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p)
         footerY += 40
     }
+    // FIXED: Using 'decY' properly now
     val decY = footerY + 40
     c.drawLine(m,decY,tX,decY,bp)
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Declaration: We declare this invoice shows the actual price of goods.",m+5,decY+12,p)
     c.drawText("Subject to $sJuris Jurisdiction",m+5,decY+22,p); p.isFakeBoldText=true
-    c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,dy+35,p)
+    c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,decY+35,p)
 
-    val sigY=decY; c.drawLine(c5,sigY,m+w,sigY,bp)
+    val sigY=decY // FIXED: Using decY to define sigY
+    c.drawLine(c5,sigY,m+w,sigY,bp)
+
+    // FIXED: LINE STOP
+    c.drawLine(tX, fTop, tX, sigY, bp)
+
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
     c.drawText("For, $sName",sigX,sigY+20,p)
