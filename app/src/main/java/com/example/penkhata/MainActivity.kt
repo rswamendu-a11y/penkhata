@@ -98,7 +98,7 @@ fun InvoiceScreen(isQuote: Boolean) {
 
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Text(if(isQuote) "QUOTATION" else "TAX INVOICE", fontSize = 24.sp, fontWeight = FontWeight.Bold, color=Color.Blue)
+            Text("New Invoice", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             TextButton(onClick = { invNo="1"; bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx, "Cleared", Toast.LENGTH_SHORT).show() }) { Text("RESET", color = Color.Red) }
         }
         Card(Modifier.padding(vertical=5.dp)) { Column(Modifier.padding(10.dp)) {
@@ -215,14 +215,9 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
 
-    // CALCULATE SIGNATURE BOX TOP
-    val fY=fTop+20; val by=fY+40; val dy=by+40; val sigY=dy+20 // Approximate height
+    val fY=fTop+20; val by=fY+40; val dy=by+40; val sigY=dy+20
+    c.drawLine(tX, fTop, tX, sigY, bp)
 
-    // *** FIXED LINE STOP ***
-    // The line now stops at 'y' (which is at the bottom of Grand Total row)
-    c.drawLine(tX, fTop, tX, y, bp)
-
-    // Footer Text (Words, Bank, Decl)
     p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,fY,p)
     if(sBank.isNotEmpty()){ c.drawLine(m,by,tX,by,bp); c.drawText("Bank Details:",m+5,by-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,by-10,p) }
@@ -231,12 +226,11 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("Subject to $sJuris Jurisdiction",m+5,dy+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,dy+35,p)
 
-    // SIGNATURE BOX (FULL WIDTH BOTTOM RIGHT)
-    c.drawLine(c5,dy,m+w,dy,bp) // Top line of box
+    c.drawLine(c5,sigY,m+w,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,dy+20,p)
-    c.drawText("Authorised Signatory",sigX,m+h-10,p)
+    c.drawText("For, $sName",sigX,sigY+20,p)
+    c.drawText("Auth. Signatory",sigX,m+h-10,p)
 
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Computer generated invoice.",midX,m+h+15,p)
