@@ -215,23 +215,37 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
 
-    // FIXED: SIGNATURE BOX LOGIC
-    val sigY = y // Box starts exactly where Totals end
-    c.drawLine(tX, fTop, tX, sigY, bp) // Vertical line stops here
-    c.drawLine(c5, sigY, m+w, sigY, bp) // Top border of Sig Box
+    // SCOPE FIX + LINE STOP FIX
+    var footerY = fTop + 20
+    val fY = footerY
 
-    val fY=fTop+20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
+    // *** LINE STOP ***
+    var sigTop = fY + 80
+    if (sBank.isNotEmpty()) sigTop += 40
+    c.drawLine(tX, fTop, tX, sigTop, bp)
+
+    p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,fY,p)
-    if(sBank.isNotEmpty()){ c.drawLine(m,by,tX,by,bp); c.drawText("Bank Details:",m+5,by-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,by-10,p) }
-    c.drawLine(m,dy,tX,dy,bp); p.isFakeBoldText=false; p.textSize=8f
-    c.drawText("Declaration: We declare this invoice shows the actual price of goods.",m+5,dy+12,p)
-    c.drawText("Subject to $sJuris Jurisdiction",m+5,dy+22,p); p.isFakeBoldText=true
+
+    if(sBank.isNotEmpty()){
+        val bankY = footerY + 40
+        c.drawLine(m,bankY,tX,bankY,bp)
+        c.drawText("Bank Details:",m+5,bankY-25,p)
+        p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p)
+        footerY += 40
+    }
+    val decY = footerY + 40
+    c.drawLine(m,decY,tX,decY,bp)
+    p.isFakeBoldText=false; p.textSize=8f
+    c.drawText("Declaration: We declare this invoice shows the actual price of goods.",m+5,decY+12,p)
+    c.drawText("Subject to $sJuris Jurisdiction",m+5,decY+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,dy+35,p)
 
+    val sigY=decY; c.drawLine(c5,sigY,m+w,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
     c.drawText("For, $sName",sigX,sigY+20,p)
-    c.drawText("Auth. Signatory",sigX,m+h-10,p)
+    c.drawText("Authorised Signatory",sigX,m+h-10,p)
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Computer generated invoice.",midX,m+h+15,p)
     doc.finishPage(page); val n=if(isQuote)"Quote" else "Inv"; val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"${n}_${System.currentTimeMillis()}.pdf")
