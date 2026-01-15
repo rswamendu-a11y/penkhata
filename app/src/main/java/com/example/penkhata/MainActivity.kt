@@ -219,19 +219,14 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
 
-    // SCOPE FIX: Define y tracker
-    var footerY = fTop + 20
+    // FORCE Y UPDATE (THE FIX)
+    y += 20f
 
+    // DYNAMIC FOOTER
+    var footerY = fTop + 20
     p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,footerY,p)
-
-    if(sBank.isNotEmpty()){
-        val bankY = footerY + 40
-        c.drawLine(m,bankY,tX,bankY,bp)
-        c.drawText("Bank Details:",m+5,bankY-25,p)
-        p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p)
-        footerY += 40
-    }
+    if(sBank.isNotEmpty()){ val bankY = footerY + 40; c.drawLine(m,bankY,tX,bankY,bp); c.drawText("Bank Details:",m+5,bankY-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p); footerY += 40 }
     val decY = footerY + 40
     c.drawLine(m,decY,tX,decY,bp)
     p.isFakeBoldText=false; p.textSize=8f
@@ -239,14 +234,7 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("Subject to $sJuris Jurisdiction",m+5,decY+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,decY+35,p)
 
-    // FIXED: DYNAMIC MAX HEIGHT CALCULATION
-    // Ensures Signature box always starts below BOTH (Dec and Grand Total)
-    val sigY = max(decY, y)
-
-    // LINE STOP & BOX
-    c.drawLine(tX, fTop, tX, sigY, bp)
-    c.drawLine(c5, sigY, m+w, sigY, bp)
-    c.drawLine(c5, sigY, c5, m+h, bp) // Missing Left Wall added
+    val sigY=max(decY, y); c.drawLine(c5,sigY,m+w,sigY,bp); c.drawLine(c5,sigY,c5,m+h,bp); c.drawLine(tX,fTop,tX,sigY,bp)
 
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
