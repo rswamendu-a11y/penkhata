@@ -181,15 +181,13 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawLine(midX, r1, midX, r1+rH, bp); c.drawLine(m, r1+rH/2, m+w, r1+rH/2, bp)
     p.textAlign=Paint.Align.LEFT; p.textSize=12f; p.isFakeBoldText=true
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
+    c.drawText(sAddr, m+5, r1+30, p); c.drawText("GSTIN: $sGst", m+5, r1+45, p)
 
-    // FIXED: SELLER ADDRESS WRAP
-    drawMultiLineText(c, sAddr, m+5, r1+30, p, w/2-10)
-    c.drawText("GSTIN: $sGst", m+5, r1+130, p)
-
-    c.drawText("Buyer: $bName", m+5, r1+rH/2+15, p)
-    drawMultiLineText(c, bAddr, m+5, r1+rH/2+30, p, w/2-10)
-    if(bGst.isNotEmpty()) { c.drawText("GSTIN: $bGst", m+5, r1+rH/2+60, p) }
-    if(bState.isNotEmpty()) { c.drawText("State: $bState", m+5, r1+rH-12, p) }
+    var currY = r1+rH/2+15
+    c.drawText("Buyer: $bName", m+5, currY, p); currY += 15
+    currY = drawMultiLineText(c, bAddr, m+5, currY, p, w/2-10)
+    if(bGst.isNotEmpty()) { c.drawText("GSTIN: $bGst", m+5, currY, p); currY += 15 }
+    if(bState.isNotEmpty()) { c.drawText("State: $bState", m+5, currY, p) }
 
     val qX=midX+w/4; val line1=r1+rH/4; val line2=r1+2*rH/4; val line3=r1+3*rH/4
     c.drawLine(midX,line1,m+w,line1,bp); c.drawLine(midX,line2,m+w,line2,bp); c.drawLine(midX,line3,m+w,line3,bp); c.drawLine(qX,r1,qX,r1+rH,bp)
@@ -217,9 +215,12 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
 
-    val fY=fTop+20; val by=fY+40; val dy=by+40; val sigY=dy+20
-    c.drawLine(tX, fTop, tX, sigY, bp)
-    p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
+    // FIXED: SIGNATURE BOX LOGIC
+    val sigY = y // Box starts exactly where Totals end
+    c.drawLine(tX, fTop, tX, sigY, bp) // Vertical line stops here
+    c.drawLine(c5, sigY, m+w, sigY, bp) // Top border of Sig Box
+
+    val fY=fTop+20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,fY,p)
     if(sBank.isNotEmpty()){ c.drawLine(m,by,tX,by,bp); c.drawText("Bank Details:",m+5,by-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,by-10,p) }
     c.drawLine(m,dy,tX,dy,bp); p.isFakeBoldText=false; p.textSize=8f
@@ -227,10 +228,9 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("Subject to $sJuris Jurisdiction",m+5,dy+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,dy+35,p)
 
-    c.drawLine(c5,sigY,m+w,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+35,p) // FIXED: Increased Y to 35 to clear the line
+    c.drawText("For, $sName",sigX,sigY+20,p)
     c.drawText("Auth. Signatory",sigX,m+h-10,p)
     p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Computer generated invoice.",midX,m+h+15,p)
