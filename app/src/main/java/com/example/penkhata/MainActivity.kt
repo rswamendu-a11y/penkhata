@@ -91,7 +91,13 @@ fun InvoiceScreen(isQuote: Boolean) {
     var payMode by remember { mutableStateOf("") }; var delNote by remember { mutableStateOf("") }
     var bName by remember { mutableStateOf("") }; var bAddr by remember { mutableStateOf("") }
     var bGst by remember { mutableStateOf("") }; var bState by remember { mutableStateOf("") }
-    var iDesc by remember { mutableStateOf("") }; var iSerial by remember { mutableStateOf("") }
+
+    // SPLIT INPUTS FOR PROFESSIONAL DESCRIPTION
+    var iBrand by remember { mutableStateOf("") }
+    var iModel by remember { mutableStateOf("") }
+    var iVariant by remember { mutableStateOf("") }
+
+    var iSerial by remember { mutableStateOf("") }
     var iHsn by remember { mutableStateOf("") }; var iQty by remember { mutableStateOf("1") }
     var iRate by remember { mutableStateOf("") }; var iUnit by remember { mutableStateOf("pcs") }
     var iTax by remember { mutableStateOf(prefs.getString("defTax", "18") ?: "18") }
@@ -115,13 +121,31 @@ fun InvoiceScreen(isQuote: Boolean) {
         }}
         Card(Modifier.padding(vertical=5.dp)) { Column(Modifier.padding(10.dp)) {
             Text("Add Item", fontWeight=FontWeight.Bold)
-            OutlinedTextField(iDesc, {iDesc=it}, label={Text("Item Name")}, modifier=Modifier.fillMaxWidth())
-            OutlinedTextField(iSerial, {iSerial=it}, label={Text("Serial / IMEI")}, modifier=Modifier.fillMaxWidth())
+            // NEW: Split Fields
+            Row {
+                OutlinedTextField(iBrand, {iBrand=it}, label={Text("Brand")}, modifier=Modifier.weight(1f))
+                Spacer(Modifier.width(5.dp))
+                OutlinedTextField(iModel, {iModel=it}, label={Text("Model")}, modifier=Modifier.weight(1f))
+            }
+            OutlinedTextField(iVariant, {iVariant=it}, label={Text("Variant / Color / Details")}, modifier=Modifier.fillMaxWidth())
+
+            OutlinedTextField(iSerial, {iSerial=it}, label={Text("IMEIs (Comma Separated)")}, modifier=Modifier.fillMaxWidth())
+
             Row { OutlinedTextField(iHsn, {iHsn=it}, label={Text("HSN")}, modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); OutlinedTextField(iUnit, {iUnit=it}, label={Text("Unit")}, modifier=Modifier.weight(1f)) }
             Row { OutlinedTextField(iQty, {iQty=it}, label={Text("Qty")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); OutlinedTextField(iRate, {iRate=it}, label={Text("Rate (Inc. Tax)")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f)) }
-            Row(Modifier.padding(top=5.dp)) { OutlinedTextField(iTax, {iTax=it}, label={Text("GST %")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); Button(onClick={ if(iDesc.isNotEmpty()){ items=items+InvItem(iDesc,iSerial,iHsn,iQty.toDoubleOrNull()?:1.0,iRate.toDoubleOrNull()?:0.0,iUnit,iTax.toDoubleOrNull()?:18.0); iDesc=""; iSerial=""; iQty="1"; iRate="" } }, modifier=Modifier.weight(1f).height(55.dp)) { Text("ADD") } }
+            Row(Modifier.padding(top=5.dp)) {
+                OutlinedTextField(iTax, {iTax=it}, label={Text("GST %")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f))
+                Spacer(Modifier.width(5.dp))
+                Button(onClick={
+                    if(iBrand.isNotEmpty()){
+                        val fullDesc = "$iBrand $iModel $iVariant".trim()
+                        items=items+InvItem(fullDesc,iSerial,iHsn,iQty.toDoubleOrNull()?:1.0,iRate.toDoubleOrNull()?:0.0,iUnit,iTax.toDoubleOrNull()?:18.0)
+                        iBrand=""; iModel=""; iVariant=""; iSerial=""; iQty="1"; iRate=""
+                    }
+                }, modifier=Modifier.weight(1f).height(55.dp)) { Text("ADD") }
+            }
         }}
-        items.forEachIndexed{ idx, it -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("${idx+1}. ${it.desc} (${it.qty} ${it.unit})", Modifier.weight(1f)); IconButton(onClick={ val m=items.toMutableList(); m.removeAt(idx); items=m }) { Icon(Icons.Default.Delete,"Del",tint=Color.Red) } }; Divider() }
+        items.forEachIndexed{ idx, it -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("${idx+1}. ${it.desc} (${it.qty})", Modifier.weight(1f)); IconButton(onClick={ val m=items.toMutableList(); m.removeAt(idx); items=m }) { Icon(Icons.Default.Delete,"Del",tint=Color.Red) } }; Divider() }
         Spacer(Modifier.height(20.dp))
         Button(onClick={
             val sName = prefs.getString("sName", "") ?: ""
@@ -178,7 +202,7 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER; p.textSize=14f
     c.drawText(if(isQuote) "QUOTATION" else "TAX INVOICE", midX, m+15, p)
     c.drawLine(m, m+20, m+w, m+20, bp)
-    val r1=m+20; val rH=145f
+    val r1=m+20; val rH=160f
     c.drawLine(midX, r1, midX, r1+rH, bp); c.drawLine(m, r1+rH/2, m+w, r1+rH/2, bp)
     p.textAlign=Paint.Align.LEFT; p.textSize=12f; p.isFakeBoldText=true
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
@@ -205,11 +229,25 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("SI",c1+w1/2,tTop+14,p); c.drawText("Desc",c2+w2/2,tTop+14,p); c.drawText("HSN",c3+w3/2,tTop+14,p); c.drawText("Qty",c4+w4/2,tTop+14,p); c.drawText("Rate",c5+w5/2,tTop+14,p); c.drawText("Per",c6+w6/2,tTop+14,p); c.drawText("Amt",c7+w7/2,tTop+14,p)
     p.isFakeBoldText=false; var y=tTop+hH; var gTotal=0.0; var totalTaxable=0.0; var totalTax=0.0
     items.forEachIndexed{i,it->
-        val rh=if(it.serial.isNotEmpty()) 30f else 20f
+        // --- DYNAMIC STACKING LOGIC ---
+        val serials = it.serial.split(",").filter { it.isNotBlank() }
+        val serialCount = serials.size
+        val rh = 20f + (serialCount * 12f) // Height grows with IMEIs
+
         val rowInc=it.qty*it.rate; val taxF=1+(it.taxRate/100); val rowBase=rowInc/taxF; val rowTax=rowInc-rowBase
         gTotal+=rowInc; totalTaxable+=rowBase; totalTax+=rowTax
         c.drawText("${i+1}",c1+w1/2,y+14,p); p.textAlign=Paint.Align.LEFT
-        c.drawText(it.desc,c2+5,y+14,p); if(it.serial.isNotEmpty()){val ps=Paint(p);ps.textSize=8f;c.drawText("SR/IMEI: ${it.serial}",c2+5,y+26,ps)}
+        c.drawText(it.desc,c2+5,y+14,p)
+
+        // DRAW STACKED IMEIS
+        if(serialCount > 0) {
+            val ps=Paint(p); ps.textSize=8f
+            c.drawText("SR/IMEI:", c2+5, y+24, ps)
+            serials.forEachIndexed { idx, sn ->
+                c.drawText(sn.trim(), c2+5, y+34+(idx*10), ps) // 10px spacing per IMEI
+            }
+        }
+
         p.textAlign=Paint.Align.CENTER; c.drawText(it.hsn,c3+w3/2,y+14,p); c.drawText(it.qty.toString(),c4+w4/2,y+14,p)
         c.drawText(String.format("%.2f",rowBase),c5+w5/2,y+14,p); c.drawText(it.unit,c6+w6/2,y+14,p)
         p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f",rowBase*it.qty),m+w-5,y+14,p); y+=rh
@@ -219,10 +257,7 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
 
-    // FORCE Y UPDATE (THE FIX)
     y += 20f
-
-    // DYNAMIC FOOTER
     var footerY = fTop + 20
     p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,footerY,p)
@@ -235,7 +270,6 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,decY+35,p)
 
     val sigY=max(decY, y); c.drawLine(c5,sigY,m+w,sigY,bp); c.drawLine(c5,sigY,c5,m+h,bp); c.drawLine(tX,fTop,tX,sigY,bp)
-
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
     c.drawText("For, $sName",sigX,sigY+20,p)
