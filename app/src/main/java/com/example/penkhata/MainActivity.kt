@@ -50,12 +50,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- SMART ID GENERATOR ---
+// SMART ID GENERATOR
 fun generateSmartId(firmName: String): String {
-    if (firmName.isBlank()) return "INV-001"
+    if (firmName.isBlank()) return "1"
     val short = firmName.filter { it.isLetter() }.take(3).uppercase()
     val date = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date())
-    return "$short/$date"
+    return "$short/$date/001"
 }
 
 @Composable
@@ -109,26 +109,17 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
     var iQty by remember { mutableStateOf("1") }; var iRate by remember { mutableStateOf("") }; var iUnit by remember { mutableStateOf("pcs") }
     var iTax by remember { mutableStateOf(prefs.getString("defTax", "18") ?: "18") }
     var items by remember { mutableStateOf(listOf<InvItem>()) }
+    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result -> if (result.contents != null) iSerial = if(iSerial.isEmpty()) result.contents else "$iSerial,${result.contents}" }
 
-    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
-        if (result.contents != null) iSerial = if(iSerial.isEmpty()) result.contents else "$iSerial,${result.contents}"
-    }
-
-    LaunchedEffect(editData) {
-        editData?.let {
-            invNo=it.optString("inv"); bName=it.optString("bName"); bGst=it.optString("bGst")
-            val ja = it.optJSONArray("items")
-            if(ja!=null) {
-                val l = mutableListOf<InvItem>()
-                for(i in 0 until ja.length()){ val o=ja.getJSONObject(i); l.add(InvItem(o.getString("d"),o.optString("s"),o.optString("h"),o.getDouble("q"),o.getDouble("r"),o.optString("u"),o.optDouble("t"))) }
-                items = l
-            }
-        }
-    }
+    LaunchedEffect(editData) { editData?.let {
+        invNo=it.optString("inv"); bName=it.optString("bName"); bGst=it.optString("bGst")
+        val ja = it.optJSONArray("items")
+        if(ja!=null) { val l = mutableListOf<InvItem>(); for(i in 0 until ja.length()){ val o=ja.getJSONObject(i); l.add(InvItem(o.getString("d"),o.optString("s"),o.optString("h"),o.getDouble("q"),o.getDouble("r"),o.optString("u"),o.optDouble("t"))) }; items = l }
+    }}
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Text(if(editData!=null)"EDITING" else "NEW INVOICE", fontSize = 24.sp, fontWeight = FontWeight.Bold, color=if(editData!=null)Color.Magenta else Color.Black)
-            TextButton(onClick = { invNo=generateSmartId(prefs.getString("sName","")?:""); bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx, "Reset", Toast.LENGTH_SHORT).show() }) { Text("RESET", color = Color.Red) }
+            Text(if(editData!=null)"EDITING" else "NEW INVOICE", fontSize=24.sp, fontWeight=FontWeight.Bold, color=if(editData!=null)Color.Magenta else Color.Black)
+            TextButton(onClick={ invNo=generateSmartId(prefs.getString("sName","")?:""); bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx,"Reset",Toast.LENGTH_SHORT).show() }) { Text("RESET", color=Color.Red) }
         }
         Card(Modifier.padding(vertical=5.dp)) { Column(Modifier.padding(10.dp)) {
             Row { OutlinedTextField(invNo, {invNo=it}, label={Text("Inv No")}, modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); OutlinedTextField(date, {date=it}, label={Text("Date")}, modifier=Modifier.weight(1f)) }
@@ -158,10 +149,7 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
         Button(onClick={
             val sName = prefs.getString("sName", "") ?: ""
             if(sName.isEmpty()) Toast.makeText(ctx, "Setup Settings First!", Toast.LENGTH_SHORT).show()
-            else {
-                saveInvoiceData(ctx, invNo, bName, bGst, items)
-                createPdf(ctx, isQuote, invNo, date, payMode, delNote, sName, prefs.getString("sAddr","")?:"", prefs.getString("sGst","")?:"", prefs.getString("sBank","")?:"", prefs.getString("sIfsc","")?:"", prefs.getString("sJuris","")?:"", bName, bAddr, bGst, bState, items)
-            }
+            else createPdf(ctx, isQuote, invNo, date, payMode, delNote, sName, prefs.getString("sAddr","")?:"", prefs.getString("sGst","")?:"", prefs.getString("sBank","")?:"", prefs.getString("sIfsc","")?:"", prefs.getString("sJuris","")?:"", bName, bAddr, bGst, bState, items)
         }, modifier=Modifier.fillMaxWidth(), colors=ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("GENERATE PDF") }
         Spacer(Modifier.height(60.dp))
     }
@@ -173,9 +161,6 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
 
 // --- LOGIC ---
 fun loadGstData(ctx: Context): Map<String,String> { var total=0.0; var tax=0.0; ctx.filesDir.listFiles()?.filter{it.name.startsWith("inv_")}?.forEach{val j=JSONObject(it.readText()); total+=j.getDouble("total"); tax+=j.getDouble("tax")}; return mapOf("total" to String.format("%.2f",total),"tax" to String.format("%.2f",tax)) }
-// Stub to satisfy compiler since saving is now atomic in createPdf
-fun saveInvoiceData(ctx: Context, invNo: String, bName: String, bGst: String, items: List<InvItem>) {}
-
 fun saveLedgerEntry(ctx: Context, e: LedgerEntry) { val j=JSONObject(); j.put("id",e.id); j.put("date",e.date); j.put("party",e.party); j.put("type",e.type); j.put("amt",e.amount); j.put("desc",e.desc); File(ctx.filesDir,"led_${e.id}.json").writeText(j.toString()) }
 fun deleteLedgerEntry(ctx: Context, id: Long) { ctx.filesDir.listFiles()?.find { it.name == "led_$id.json" }?.delete() }
 fun loadLedger(ctx: Context): List<LedgerEntry> { val l=mutableListOf<LedgerEntry>(); ctx.filesDir.listFiles()?.filter{it.name.startsWith("led_")}?.forEach{val j=JSONObject(it.readText()); l.add(LedgerEntry(j.optLong("id"),j.getString("date"),j.getString("party"),j.getString("type"),j.getDouble("amt"),j.getString("desc")))}; return l }
@@ -260,31 +245,21 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("SI",c1+w1/2,tTop+14,p); c.drawText("Desc",c2+w2/2,tTop+14,p); c.drawText("HSN",c3+w3/2,tTop+14,p); c.drawText("Qty",c4+w4/2,tTop+14,p); c.drawText("Rate",c5+w5/2,tTop+14,p); c.drawText("Per",c6+w6/2,tTop+14,p); c.drawText("Amt",c7+w7/2,tTop+14,p)
     p.isFakeBoldText=false; var y=tTop+hH; var gTotal=0.0; var totalTaxable=0.0; var totalTax=0.0
     items.forEachIndexed{i,it->
-        // --- DYNAMIC STACKING LOGIC ---
-        val serials = it.serial.split(",").filter { it.isNotBlank() }
-        val serialCount = serials.size
-        val rh = 20f + (serialCount * 12f)
-        val rowInc=it.qty*it.rate; val taxF=1+(it.taxRate/100); val rowBase=rowInc/taxF; val rowTax=rowInc-rowBase
-        gTotal+=rowInc; totalTaxable+=rowBase; totalTax+=rowTax
+        val serials = it.serial.split(",").filter { it.isNotBlank() }; val serialCount = serials.size; val rh = 20f + (serialCount * 12f)
+        val unitInc = it.rate; val taxF = 1 + (it.taxRate/100); val unitBase = unitInc / taxF; val rowInc = unitInc * it.qty; val rowBase = unitBase * it.qty; val rowTax = rowInc - rowBase
+        gTotal += rowInc; totalTaxable += rowBase; totalTax += rowTax
         c.drawText("${i+1}",c1+w1/2,y+14,p); p.textAlign=Paint.Align.LEFT
         c.drawText(it.desc,c2+5,y+14,p)
-        if(serialCount > 0) {
-            val ps=Paint(p); ps.textSize=8f
-            c.drawText("SR/IMEI:", c2+5, y+24, ps)
-            serials.forEachIndexed { idx, sn -> c.drawText(sn.trim(), c2+5, y+34+(idx*10), ps) }
-        }
+        if(serialCount > 0) { val ps=Paint(p); ps.textSize=8f; c.drawText("SR/IMEI:", c2+5, y+24, ps); serials.forEachIndexed { idx, sn -> c.drawText(sn.trim(), c2+5, y+34+(idx*10), ps) } }
         p.textAlign=Paint.Align.CENTER; c.drawText(it.hsn,c3+w3/2,y+14,p); c.drawText(it.qty.toString(),c4+w4/2,y+14,p)
-        c.drawText(String.format("%.2f",rowBase),c5+w5/2,y+14,p); c.drawText(it.unit,c6+w6/2,y+14,p)
-        p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f",rowBase*it.qty),m+w-5,y+14,p); y+=rh
+        c.drawText(String.format("%.2f",unitBase),c5+w5/2,y+14,p); c.drawText(it.unit,c6+w6/2,y+14,p)
+        p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f",rowBase),m+w-5,y+14,p); y+=rh
     }
     val fTop=m+h-200f; vLine(tTop+hH,fTop); c.drawLine(m,fTop,m+w,fTop,bp); y=fTop; val tX=c7; p.textAlign=Paint.Align.RIGHT
     fun row(l:String,v:String){c.drawText(l,tX-10,y+14,p);c.drawText(v,m+w-5,y+14,p);c.drawLine(tX,y,tX,y+20,bp);c.drawLine(tX,y+20,m+w,y+20,bp);y+=20f}
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
-
-    y += 20f
-    var footerY = fTop + 20
-    p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
+    y += 20f; var footerY = fTop + 20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,footerY,p)
     if(sBank.isNotEmpty()){ val bankY = footerY + 40; c.drawLine(m,bankY,tX,bankY,bp); c.drawText("Bank Details:",m+5,bankY-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p); footerY += 40 }
     val decY = footerY + 40
@@ -293,31 +268,29 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("Declaration: We declare this invoice shows the actual price of goods.",m+5,decY+12,p)
     c.drawText("Subject to $sJuris Jurisdiction",m+5,decY+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,decY+35,p)
-
     val sigY=max(decY, y); c.drawLine(c5,sigY,m+w,sigY,bp); c.drawLine(c5,sigY,c5,m+h,bp); c.drawLine(tX,fTop,tX,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+20,p)
-    c.drawText("Authorised Signatory",sigX,m+h-10,p)
-    p.isFakeBoldText=false; p.textSize=8f
-    c.drawText("Computer generated invoice.",midX,m+h+15,p)
+    c.drawText("For, $sName",sigX,sigY+20,p); c.drawText("Authorised Signatory",sigX,m+h-10,p)
+    p.isFakeBoldText=false; p.textSize=8f; c.drawText("Computer generated invoice.",midX,m+h+15,p)
 
-    // SAVE JSON & PDF (SYNCED TIMESTAMP)
+    // SAVE JSON (DIGITAL CARBON COPY)
     val ts = System.currentTimeMillis()
-    val n=if(isQuote)"Quote" else "Inv"; val fName = "${n}_$ts"
+    val n=if(isQuote)"Quote" else "Inv"
+    val fName = "${n}_$ts"
 
-    // SAVE JSON (DIGITAL COPY)
     if (!isQuote) {
         val jsonFile = File(ctx.filesDir, "$fName.json")
-        val j=JSONObject(); j.put("inv",invNo); j.put("d",date); j.put("bName",bName); j.put("bGst",bGst); j.put("total",gTotal); j.put("tax",totalTax)
-        val jItems = org.json.JSONArray(); items.forEach { jItems.put(JSONObject().put("d",it.desc).put("s",it.serial).put("h",it.hsn).put("q",it.qty).put("r",it.rate).put("t",it.taxRate)) }
-        j.put("items", jItems); jsonFile.writeText(j.toString())
+        val j=JSONObject(); j.put("inv",invNo); j.put("d",date); j.put("bName",bName); j.put("bGst",bGst);
+        // Save extra fields for EDIT feature
+        j.put("bAddr", bAddr); j.put("bState", bState); j.put("payMode", payMode); j.put("delNote", delNote)
+
+        val jItems = org.json.JSONArray(); items.forEach { jItems.put(JSONObject().put("d",it.desc).put("s",it.serial).put("h",it.hsn).put("q",it.qty).put("r",it.rate).put("t",it.taxRate).put("u",it.unit)) }
+        j.put("items", jItems); j.put("total",gTotal); j.put("tax",totalTax); jsonFile.writeText(j.toString())
     }
 
-    // SAVE PDF
     val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"$fName.pdf")
-    f.outputStream().use { doc.writeTo(it) }
+    f.outputStream().use { doc.writeTo(it) } // SAFE PDF SAVE
     doc.close()
-
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
 }
