@@ -34,6 +34,7 @@ import androidx.core.content.FileProvider
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -50,7 +51,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// SMART ID GENERATOR
 fun generateSmartId(firmName: String): String {
     if (firmName.isBlank()) return "1"
     val short = firmName.filter { it.isLetter() }.take(3).uppercase()
@@ -89,7 +89,7 @@ fun MainAppScreen() {
 fun LoginScreen(pin: String, unlock: () -> Unit) {
     var input by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("SECURE LOGIN", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text("PENKHATA SECURE", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         OutlinedTextField(value=input, onValueChange={input=it}, visualTransformation=PasswordVisualTransformation(), keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword), modifier=Modifier.padding(20.dp))
         Button(onClick={if(input==pin) unlock()}) { Text("UNLOCK") }
     }
@@ -109,17 +109,27 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
     var iQty by remember { mutableStateOf("1") }; var iRate by remember { mutableStateOf("") }; var iUnit by remember { mutableStateOf("pcs") }
     var iTax by remember { mutableStateOf(prefs.getString("defTax", "18") ?: "18") }
     var items by remember { mutableStateOf(listOf<InvItem>()) }
-    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result -> if (result.contents != null) iSerial = if(iSerial.isEmpty()) result.contents else "$iSerial,${result.contents}" }
 
-    LaunchedEffect(editData) { editData?.let {
-        invNo=it.optString("inv"); bName=it.optString("bName"); bGst=it.optString("bGst")
-        val ja = it.optJSONArray("items")
-        if(ja!=null) { val l = mutableListOf<InvItem>(); for(i in 0 until ja.length()){ val o=ja.getJSONObject(i); l.add(InvItem(o.getString("d"),o.optString("s"),o.optString("h"),o.getDouble("q"),o.getDouble("r"),o.optString("u"),o.optDouble("t"))) }; items = l }
-    }}
+    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) iSerial = if(iSerial.isEmpty()) result.contents else "$iSerial,${result.contents}"
+    }
+
+    LaunchedEffect(editData) {
+        editData?.let {
+            invNo=it.optString("inv"); bName=it.optString("bName"); bGst=it.optString("bGst")
+            bAddr=it.optString("bAddr"); bState=it.optString("bState"); payMode=it.optString("payMode"); delNote=it.optString("delNote")
+            val ja = it.optJSONArray("items")
+            if(ja!=null) {
+                val l = mutableListOf<InvItem>()
+                for(i in 0 until ja.length()){ val o=ja.getJSONObject(i); l.add(InvItem(o.getString("d"),o.optString("s"),o.optString("h"),o.getDouble("q"),o.getDouble("r"),o.optString("u"),o.optDouble("t"))) }
+                items = l
+            }
+        }
+    }
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Text(if(editData!=null)"EDITING" else "NEW INVOICE", fontSize=24.sp, fontWeight=FontWeight.Bold, color=if(editData!=null)Color.Magenta else Color.Black)
-            TextButton(onClick={ invNo=generateSmartId(prefs.getString("sName","")?:""); bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx,"Reset",Toast.LENGTH_SHORT).show() }) { Text("RESET", color=Color.Red) }
+            Text(if(editData!=null)"EDITING" else "NEW INVOICE", fontSize = 24.sp, fontWeight = FontWeight.Bold, color=if(editData!=null)Color.Magenta else Color.Black)
+            TextButton(onClick = { invNo=generateSmartId(prefs.getString("sName","")?:""); bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx, "Reset", Toast.LENGTH_SHORT).show() }) { Text("RESET", color = Color.Red) }
         }
         Card(Modifier.padding(vertical=5.dp)) { Column(Modifier.padding(10.dp)) {
             Row { OutlinedTextField(invNo, {invNo=it}, label={Text("Inv No")}, modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); OutlinedTextField(date, {date=it}, label={Text("Date")}, modifier=Modifier.weight(1f)) }
@@ -156,7 +166,7 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
 }
 @Composable fun LedgerScreen() { val ctx=LocalContext.current; var p by remember{mutableStateOf("")}; var t by remember{mutableStateOf("DEBIT")}; var a by remember{mutableStateOf("")}; var d by remember{mutableStateOf("")}; var e by remember{mutableStateOf(loadLedger(ctx))}; Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())){ Text("LEDGER",fontSize=24.sp,fontWeight=FontWeight.Bold); Card(Modifier.padding(vertical=10.dp)){Column(Modifier.padding(10.dp)){ OutlinedTextField(p,{p=it},label={Text("Party")},modifier=Modifier.fillMaxWidth()); Row{Button(onClick={t="DEBIT"},colors=ButtonDefaults.buttonColors(containerColor=if(t=="DEBIT")Color.Red else Color.Gray),modifier=Modifier.weight(1f)){Text("DEBIT")}; Spacer(Modifier.width(5.dp)); Button(onClick={t="CREDIT"},colors=ButtonDefaults.buttonColors(containerColor=if(t=="CREDIT")Color.Green else Color.Gray),modifier=Modifier.weight(1f)){Text("CREDIT")}}; OutlinedTextField(a,{a=it},label={Text("Amount")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth()); OutlinedTextField(d,{d=it},label={Text("Note")},modifier=Modifier.fillMaxWidth()); Button(onClick={if(p.isNotEmpty()&&a.isNotEmpty()){val en=LedgerEntry(System.currentTimeMillis(),SimpleDateFormat("dd-MM").format(Date()),p,t,a.toDouble(),d); saveLedgerEntry(ctx,en); e=loadLedger(ctx); p="";a=""}},modifier=Modifier.fillMaxWidth()){Text("ADD")}}}; e.reversed().forEach{Row(Modifier.padding(8.dp).fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Column{Text(it.party,fontWeight=FontWeight.Bold);Text(it.desc,fontSize=10.sp)}; Column(horizontalAlignment=Alignment.End){Text(it.type,color=if(it.type=="DEBIT")Color.Red else Color.Green,fontSize=10.sp);Text("₹${it.amount}",fontWeight=FontWeight.Bold)}; IconButton(onClick={deleteLedgerEntry(ctx,it.id); e=loadLedger(ctx)}){Icon(Icons.Default.Delete,"Del",tint=Color.Gray)}};Divider()}; Spacer(Modifier.height(50.dp))}}
 @Composable fun GSTReportScreen() { val ctx=LocalContext.current; val d=remember{loadGstData(ctx)}; Column(Modifier.padding(16.dp)){ Text("GST DASHBOARD",fontSize=24.sp,fontWeight=FontWeight.Bold); Card(Modifier.padding(vertical=10.dp)){Column(Modifier.padding(16.dp)){ Text("Summary",fontWeight=FontWeight.Bold); Divider(Modifier.padding(vertical=5.dp)); Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween){Text("Sales:");Text("₹${d["total"]}")}; Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween){Text("Tax:");Text("₹${d["tax"]}")} }}; Row(Modifier.padding(top=10.dp)) { Button(onClick={createGstExcel(ctx,"ALL")},modifier=Modifier.weight(1f)){Text("EXPORT EXCEL")} } } }
-@Composable fun FileHistoryScreen(onEdit: (JSONObject)->Unit) { val ctx=LocalContext.current; val d=ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS); var f by remember{mutableStateOf(d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList())}; LazyColumn(Modifier.padding(16.dp)){items(f){fl->Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f).clickable{ctx.startActivity(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)})}){Text(fl.name,fontWeight=FontWeight.Bold);Text(SimpleDateFormat("dd MMM HH:mm").format(Date(fl.lastModified())),fontSize=10.sp)}; IconButton(onClick={val jf=File(ctx.filesDir,fl.name.replace(".pdf",".json")); if(jf.exists()) onEdit(JSONObject(jf.readText())) else Toast.makeText(ctx,"No Data",Toast.LENGTH_SHORT).show()}){Icon(Icons.Default.Edit,"Edit",tint=Color.Magenta)}; IconButton(onClick={val u=FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="application/pdf";putExtra(Intent.EXTRA_STREAM,u);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"Share"))}){Icon(Icons.Default.Share,"Share",tint=Color.Blue)}; IconButton(onClick={if(fl.delete()){val jf=File(ctx.filesDir,fl.name.replace(".pdf",".json"));if(jf.exists())jf.delete();f=d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList()}}){Icon(Icons.Default.Delete,"Del",tint=Color.Red)}};Divider()}} }
+@Composable fun FileHistoryScreen(onEdit: (JSONObject)->Unit) { val ctx=LocalContext.current; val d=ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS); var f by remember{mutableStateOf(d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList())}; LazyColumn(Modifier.padding(16.dp)){items(f){fl->Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f).clickable{ctx.startActivity(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)})}){Text(fl.name,fontWeight=FontWeight.Bold);Text(SimpleDateFormat("dd MMM HH:mm").format(Date(fl.lastModified())),fontSize=10.sp)}; IconButton(onClick={ val jsonName = fl.name.replace(".pdf", ".json"); val jsonFile = File(ctx.filesDir, jsonName); if(jsonFile.exists()) onEdit(JSONObject(jsonFile.readText())) else Toast.makeText(ctx, "No Data", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.Edit, "Edit", tint=Color.Magenta) } ; IconButton(onClick={val u=FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="application/pdf";putExtra(Intent.EXTRA_STREAM,u);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"Share"))}){Icon(Icons.Default.Share,"Share",tint=Color.Blue)}; IconButton(onClick={if(fl.delete()){val jf=File(ctx.filesDir,fl.name.replace(".pdf",".json"));if(jf.exists())jf.delete();f=d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList()}}){Icon(Icons.Default.Delete,"Del",tint=Color.Red)}};Divider()}} }
 @Composable fun SettingsScreen(currentPin: String, onPinSave: (String)->Unit) { val ctx=LocalContext.current; val prefs=remember{ctx.getSharedPreferences("penkhata_data",Context.MODE_PRIVATE)}; var sName by remember{mutableStateOf(prefs.getString("sName","")?:"")}; var sAddr by remember{mutableStateOf(prefs.getString("sAddr","")?:"")}; var sGst by remember{mutableStateOf(prefs.getString("sGst","")?:"")}; var sBank by remember{mutableStateOf(prefs.getString("sBank","")?:"")}; var sIfsc by remember{mutableStateOf(prefs.getString("sIfsc","")?:"")}; var sJuris by remember{mutableStateOf(prefs.getString("sJuris","")?:"")}; var defTax by remember{mutableStateOf(prefs.getString("defTax","18")?:"18")}; var newPin by remember{mutableStateOf(currentPin)}; Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())){Text("SETTINGS",fontSize=24.sp,fontWeight=FontWeight.Bold); OutlinedTextField(newPin,{newPin=it},label={Text("Set Login PIN")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),modifier=Modifier.fillMaxWidth()); OutlinedTextField(sName,{sName=it},label={Text("Firm Name")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sAddr,{sAddr=it},label={Text("Address")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sGst,{sGst=it},label={Text("GSTIN")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sBank,{sBank=it},label={Text("Bank Name & Acc")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sIfsc,{sIfsc=it},label={Text("IFSC")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sJuris,{sJuris=it},label={Text("Jurisdiction")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(defTax,{defTax=it},label={Text("Default Tax %")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth()); Button(onClick={prefs.edit().putString("sName",sName).putString("sAddr",sAddr).putString("sGst",sGst).putString("sBank",sBank).putString("sIfsc",sIfsc).putString("sJuris",sJuris).putString("defTax",defTax).apply(); onPinSave(newPin); Toast.makeText(ctx,"Saved",Toast.LENGTH_SHORT).show()},modifier=Modifier.fillMaxWidth()){Text("SAVE")}; Spacer(Modifier.height(60.dp))} }
 
 // --- LOGIC ---
@@ -182,7 +192,7 @@ fun createLedgerPdf(ctx: Context, data: List<LedgerEntry>, type: String) {
     c.drawText("LEDGER REPORT", 20f, y, p); y+=30f
     c.drawText("Date | Party | Type | Amount", 20f, y, p); y+=20f
     data.forEach { c.drawText("${it.date} | ${it.party} | ${it.type} | ${it.amount}", 20f, y, p); y+=20f }
-    doc.finishPage(page); val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"Ledger_Report.pdf"); doc.writeTo(FileOutputStream(f)); doc.close()
+    doc.finishPage(page); val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"Ledger_Report.pdf"); f.outputStream().use{doc.writeTo(it)}; doc.close()
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
 }
 
@@ -274,17 +284,13 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("For, $sName",sigX,sigY+20,p); c.drawText("Authorised Signatory",sigX,m+h-10,p)
     p.isFakeBoldText=false; p.textSize=8f; c.drawText("Computer generated invoice.",midX,m+h+15,p)
 
-    // SAVE JSON (DIGITAL CARBON COPY)
+    // SAVE JSON & PDF (SYNCED TIMESTAMP)
     val ts = System.currentTimeMillis()
-    val n=if(isQuote)"Quote" else "Inv"
-    val fName = "${n}_$ts"
-
+    val n=if(isQuote)"Quote" else "Inv"; val fName = "${n}_$ts"
     if (!isQuote) {
         val jsonFile = File(ctx.filesDir, "$fName.json")
         val j=JSONObject(); j.put("inv",invNo); j.put("d",date); j.put("bName",bName); j.put("bGst",bGst);
-        // Save extra fields for EDIT feature
         j.put("bAddr", bAddr); j.put("bState", bState); j.put("payMode", payMode); j.put("delNote", delNote)
-
         val jItems = org.json.JSONArray(); items.forEach { jItems.put(JSONObject().put("d",it.desc).put("s",it.serial).put("h",it.hsn).put("q",it.qty).put("r",it.rate).put("t",it.taxRate).put("u",it.unit)) }
         j.put("items", jItems); j.put("total",gTotal); j.put("tax",totalTax); jsonFile.writeText(j.toString())
     }
@@ -292,5 +298,6 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"$fName.pdf")
     f.outputStream().use { doc.writeTo(it) } // SAFE PDF SAVE
     doc.close()
+    Toast.makeText(ctx, "Saved to Documents", Toast.LENGTH_LONG).show() // SUCCESS TOAST
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
 }
