@@ -51,11 +51,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-fun generateSmartId(firmName: String): String {
-    if (firmName.isBlank()) return "1"
-    val short = firmName.filter { it.isLetter() }.take(3).uppercase()
-    val date = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date())
-    return "$short/$date/001"
+// SMART ID LOGIC: Counts existing files to generate next number
+fun generateSmartId(ctx: Context, firmName: String): String {
+    val short = if (firmName.isBlank()) "INV" else firmName.filter { it.isLetter() }.take(3).uppercase()
+    val datePart = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date()) // 2026/01/17
+    val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+    // Count how many invoices exist for TODAY
+    var count = 1
+    val files = ctx.filesDir.listFiles()?.filter { it.name.startsWith("inv_") && it.extension == "json" }
+    files?.forEach {
+        try {
+            val json = JSONObject(it.readText())
+            if (json.optString("d") == todayStr) count++
+        } catch (e: Exception) { }
+    }
+    return "$short/$datePart/${String.format("%03d", count)}"
 }
 
 @Composable
@@ -89,7 +100,7 @@ fun MainAppScreen() {
 fun LoginScreen(pin: String, unlock: () -> Unit) {
     var input by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("PENKHATA SECURE", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text("SECURE LOGIN", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         OutlinedTextField(value=input, onValueChange={input=it}, visualTransformation=PasswordVisualTransformation(), keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword), modifier=Modifier.padding(20.dp))
         Button(onClick={if(input==pin) unlock()}) { Text("UNLOCK") }
     }
@@ -99,7 +110,8 @@ fun LoginScreen(pin: String, unlock: () -> Unit) {
 fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("penkhata_data", android.content.Context.MODE_PRIVATE) }
-    var invNo by remember { mutableStateOf(generateSmartId(prefs.getString("sName","")?:"")) }
+    // Init ID using the new Smart Generator
+    var invNo by remember { mutableStateOf(generateSmartId(ctx, prefs.getString("sName","")?:"")) }
     var date by remember { mutableStateOf(SimpleDateFormat("dd-MMM-yyyy").format(Date())) }
     var payMode by remember { mutableStateOf("") }; var delNote by remember { mutableStateOf("") }
     var bName by remember { mutableStateOf("") }; var bAddr by remember { mutableStateOf("") }
@@ -129,7 +141,7 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             Text(if(editData!=null)"EDITING" else "NEW INVOICE", fontSize = 24.sp, fontWeight = FontWeight.Bold, color=if(editData!=null)Color.Magenta else Color.Black)
-            TextButton(onClick = { invNo=generateSmartId(prefs.getString("sName","")?:""); bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx, "Reset", Toast.LENGTH_SHORT).show() }) { Text("RESET", color = Color.Red) }
+            TextButton(onClick={ invNo=generateSmartId(ctx, prefs.getString("sName","")?:""); bName=""; bAddr=""; bGst=""; items=emptyList(); Toast.makeText(ctx,"Reset",Toast.LENGTH_SHORT).show() }) { Text("RESET", color=Color.Red) }
         }
         Card(Modifier.padding(vertical=5.dp)) { Column(Modifier.padding(10.dp)) {
             Row { OutlinedTextField(invNo, {invNo=it}, label={Text("Inv No")}, modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); OutlinedTextField(date, {date=it}, label={Text("Date")}, modifier=Modifier.weight(1f)) }
@@ -152,21 +164,39 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
             }
             Row { OutlinedTextField(iHsn, {iHsn=it}, label={Text("HSN")}, modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); OutlinedTextField(iUnit, {iUnit=it}, label={Text("Unit")}, modifier=Modifier.weight(1f)) }
             Row { OutlinedTextField(iQty, {iQty=it}, label={Text("Qty")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); OutlinedTextField(iRate, {iRate=it}, label={Text("Rate (Inc. Tax)")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f)) }
-            Row(Modifier.padding(top=5.dp)) { OutlinedTextField(iTax, {iTax=it}, label={Text("GST %")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f)); Spacer(Modifier.width(5.dp)); Button(onClick={ if(iBrand.isNotEmpty()){ val fullDesc="$iBrand $iModel $iVariant".trim(); items=items+InvItem(fullDesc,iSerial,iHsn,iQty.toDoubleOrNull()?:1.0,iRate.toDoubleOrNull()?:0.0,iUnit,iTax.toDoubleOrNull()?:18.0); iBrand=""; iModel=""; iVariant=""; iSerial=""; iQty="1"; iRate="" } }, modifier=Modifier.weight(1f).height(55.dp)) { Text("ADD") } }
+            Row(Modifier.padding(top=5.dp)) {
+                OutlinedTextField(iTax, {iTax=it}, label={Text("GST %")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), modifier=Modifier.weight(1f))
+                Spacer(Modifier.width(5.dp))
+                // --- SAFETY TRY-CATCH BLOCK FOR ADD BUTTON ---
+                Button(onClick={
+                    try {
+                        if(iBrand.isNotEmpty()){
+                            val fullDesc="$iBrand $iModel $iVariant".trim()
+                            val qty = iQty.trim().ifEmpty { "1" }.toDouble() // Safe default
+                            val rate = iRate.trim().ifEmpty { "0" }.toDouble() // Safe default
+                            val tax = iTax.trim().ifEmpty { "18" }.toDouble() // Safe default
+                            items=items+InvItem(fullDesc,iSerial,iHsn,qty,rate,iUnit,tax)
+                            iBrand=""; iModel=""; iVariant=""; iSerial=""; iQty="1"; iRate=""
+                        }
+                    } catch (e: Exception) { Toast.makeText(ctx, "Check Inputs!", Toast.LENGTH_SHORT).show() }
+                }, modifier=Modifier.weight(1f).height(55.dp)) { Text("ADD") }
+            }
         }}
         items.forEachIndexed{ idx, it -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("${idx+1}. ${it.desc} (${it.qty})", Modifier.weight(1f)); IconButton(onClick={ val m=items.toMutableList(); m.removeAt(idx); items=m }) { Icon(Icons.Default.Delete,"Del",tint=Color.Red) } }; Divider() }
         Spacer(Modifier.height(20.dp))
         Button(onClick={
             val sName = prefs.getString("sName", "") ?: ""
             if(sName.isEmpty()) Toast.makeText(ctx, "Setup Settings First!", Toast.LENGTH_SHORT).show()
-            else createPdf(ctx, isQuote, invNo, date, payMode, delNote, sName, prefs.getString("sAddr","")?:"", prefs.getString("sGst","")?:"", prefs.getString("sBank","")?:"", prefs.getString("sIfsc","")?:"", prefs.getString("sJuris","")?:"", bName, bAddr, bGst, bState, items)
+            else {
+                createPdf(ctx, isQuote, invNo, date, payMode, delNote, sName, prefs.getString("sAddr","")?:"", prefs.getString("sGst","")?:"", prefs.getString("sBank","")?:"", prefs.getString("sIfsc","")?:"", prefs.getString("sJuris","")?:"", bName, bAddr, bGst, bState, items)
+            }
         }, modifier=Modifier.fillMaxWidth(), colors=ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("GENERATE PDF") }
         Spacer(Modifier.height(60.dp))
     }
 }
 @Composable fun LedgerScreen() { val ctx=LocalContext.current; var p by remember{mutableStateOf("")}; var t by remember{mutableStateOf("DEBIT")}; var a by remember{mutableStateOf("")}; var d by remember{mutableStateOf("")}; var e by remember{mutableStateOf(loadLedger(ctx))}; Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())){ Text("LEDGER",fontSize=24.sp,fontWeight=FontWeight.Bold); Card(Modifier.padding(vertical=10.dp)){Column(Modifier.padding(10.dp)){ OutlinedTextField(p,{p=it},label={Text("Party")},modifier=Modifier.fillMaxWidth()); Row{Button(onClick={t="DEBIT"},colors=ButtonDefaults.buttonColors(containerColor=if(t=="DEBIT")Color.Red else Color.Gray),modifier=Modifier.weight(1f)){Text("DEBIT")}; Spacer(Modifier.width(5.dp)); Button(onClick={t="CREDIT"},colors=ButtonDefaults.buttonColors(containerColor=if(t=="CREDIT")Color.Green else Color.Gray),modifier=Modifier.weight(1f)){Text("CREDIT")}}; OutlinedTextField(a,{a=it},label={Text("Amount")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth()); OutlinedTextField(d,{d=it},label={Text("Note")},modifier=Modifier.fillMaxWidth()); Button(onClick={if(p.isNotEmpty()&&a.isNotEmpty()){val en=LedgerEntry(System.currentTimeMillis(),SimpleDateFormat("dd-MM").format(Date()),p,t,a.toDouble(),d); saveLedgerEntry(ctx,en); e=loadLedger(ctx); p="";a=""}},modifier=Modifier.fillMaxWidth()){Text("ADD")}}}; e.reversed().forEach{Row(Modifier.padding(8.dp).fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Column{Text(it.party,fontWeight=FontWeight.Bold);Text(it.desc,fontSize=10.sp)}; Column(horizontalAlignment=Alignment.End){Text(it.type,color=if(it.type=="DEBIT")Color.Red else Color.Green,fontSize=10.sp);Text("₹${it.amount}",fontWeight=FontWeight.Bold)}; IconButton(onClick={deleteLedgerEntry(ctx,it.id); e=loadLedger(ctx)}){Icon(Icons.Default.Delete,"Del",tint=Color.Gray)}};Divider()}; Spacer(Modifier.height(50.dp))}}
 @Composable fun GSTReportScreen() { val ctx=LocalContext.current; val d=remember{loadGstData(ctx)}; Column(Modifier.padding(16.dp)){ Text("GST DASHBOARD",fontSize=24.sp,fontWeight=FontWeight.Bold); Card(Modifier.padding(vertical=10.dp)){Column(Modifier.padding(16.dp)){ Text("Summary",fontWeight=FontWeight.Bold); Divider(Modifier.padding(vertical=5.dp)); Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween){Text("Sales:");Text("₹${d["total"]}")}; Row(Modifier.fillMaxWidth(),Arrangement.SpaceBetween){Text("Tax:");Text("₹${d["tax"]}")} }}; Row(Modifier.padding(top=10.dp)) { Button(onClick={createGstExcel(ctx,"ALL")},modifier=Modifier.weight(1f)){Text("EXPORT EXCEL")} } } }
-@Composable fun FileHistoryScreen(onEdit: (JSONObject)->Unit) { val ctx=LocalContext.current; val d=ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS); var f by remember{mutableStateOf(d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList())}; LazyColumn(Modifier.padding(16.dp)){items(f){fl->Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f).clickable{ctx.startActivity(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)})}){Text(fl.name,fontWeight=FontWeight.Bold);Text(SimpleDateFormat("dd MMM HH:mm").format(Date(fl.lastModified())),fontSize=10.sp)}; IconButton(onClick={ val jsonName = fl.name.replace(".pdf", ".json"); val jsonFile = File(ctx.filesDir, jsonName); if(jsonFile.exists()) onEdit(JSONObject(jsonFile.readText())) else Toast.makeText(ctx, "No Data", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.Edit, "Edit", tint=Color.Magenta) } ; IconButton(onClick={val u=FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="application/pdf";putExtra(Intent.EXTRA_STREAM,u);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"Share"))}){Icon(Icons.Default.Share,"Share",tint=Color.Blue)}; IconButton(onClick={if(fl.delete()){val jf=File(ctx.filesDir,fl.name.replace(".pdf",".json"));if(jf.exists())jf.delete();f=d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList()}}){Icon(Icons.Default.Delete,"Del",tint=Color.Red)}};Divider()}} }
+@Composable fun FileHistoryScreen(onEdit: (JSONObject)->Unit) { val ctx=LocalContext.current; val d=ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS); var f by remember{mutableStateOf(d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList())}; LazyColumn(Modifier.padding(16.dp)){items(f){fl->Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f).clickable{ctx.startActivity(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)})}){Text(fl.name,fontWeight=FontWeight.Bold);Text(SimpleDateFormat("dd MMM HH:mm").format(Date(fl.lastModified())),fontSize=10.sp)}; IconButton(onClick={val jf=File(ctx.filesDir,fl.name.replace(".pdf",".json")); if(jf.exists()) onEdit(JSONObject(jf.readText())) else Toast.makeText(ctx,"No Data",Toast.LENGTH_SHORT).show()}){Icon(Icons.Default.Edit,"Edit",tint=Color.Magenta)}; IconButton(onClick={val u=FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",fl); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="application/pdf";putExtra(Intent.EXTRA_STREAM,u);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"Share"))}){Icon(Icons.Default.Share,"Share",tint=Color.Blue)}; IconButton(onClick={if(fl.delete()){val jf=File(ctx.filesDir,fl.name.replace(".pdf",".json"));if(jf.exists())jf.delete();f=d?.listFiles()?.filter{it.extension=="pdf"}?.sortedByDescending{it.lastModified()}?:emptyList()}}){Icon(Icons.Default.Delete,"Del",tint=Color.Red)}};Divider()}} }
 @Composable fun SettingsScreen(currentPin: String, onPinSave: (String)->Unit) { val ctx=LocalContext.current; val prefs=remember{ctx.getSharedPreferences("penkhata_data",Context.MODE_PRIVATE)}; var sName by remember{mutableStateOf(prefs.getString("sName","")?:"")}; var sAddr by remember{mutableStateOf(prefs.getString("sAddr","")?:"")}; var sGst by remember{mutableStateOf(prefs.getString("sGst","")?:"")}; var sBank by remember{mutableStateOf(prefs.getString("sBank","")?:"")}; var sIfsc by remember{mutableStateOf(prefs.getString("sIfsc","")?:"")}; var sJuris by remember{mutableStateOf(prefs.getString("sJuris","")?:"")}; var defTax by remember{mutableStateOf(prefs.getString("defTax","18")?:"18")}; var newPin by remember{mutableStateOf(currentPin)}; Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())){Text("SETTINGS",fontSize=24.sp,fontWeight=FontWeight.Bold); OutlinedTextField(newPin,{newPin=it},label={Text("Set Login PIN")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),modifier=Modifier.fillMaxWidth()); OutlinedTextField(sName,{sName=it},label={Text("Firm Name")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sAddr,{sAddr=it},label={Text("Address")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sGst,{sGst=it},label={Text("GSTIN")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sBank,{sBank=it},label={Text("Bank Name & Acc")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sIfsc,{sIfsc=it},label={Text("IFSC")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(sJuris,{sJuris=it},label={Text("Jurisdiction")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(defTax,{defTax=it},label={Text("Default Tax %")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),modifier=Modifier.fillMaxWidth()); Button(onClick={prefs.edit().putString("sName",sName).putString("sAddr",sAddr).putString("sGst",sGst).putString("sBank",sBank).putString("sIfsc",sIfsc).putString("sJuris",sJuris).putString("defTax",defTax).apply(); onPinSave(newPin); Toast.makeText(ctx,"Saved",Toast.LENGTH_SHORT).show()},modifier=Modifier.fillMaxWidth()){Text("SAVE")}; Spacer(Modifier.height(60.dp))} }
 
 // --- LOGIC ---
@@ -255,21 +285,30 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("SI",c1+w1/2,tTop+14,p); c.drawText("Desc",c2+w2/2,tTop+14,p); c.drawText("HSN",c3+w3/2,tTop+14,p); c.drawText("Qty",c4+w4/2,tTop+14,p); c.drawText("Rate",c5+w5/2,tTop+14,p); c.drawText("Per",c6+w6/2,tTop+14,p); c.drawText("Amt",c7+w7/2,tTop+14,p)
     p.isFakeBoldText=false; var y=tTop+hH; var gTotal=0.0; var totalTaxable=0.0; var totalTax=0.0
     items.forEachIndexed{i,it->
-        val serials = it.serial.split(",").filter { it.isNotBlank() }; val serialCount = serials.size; val rh = 20f + (serialCount * 12f)
-        val unitInc = it.rate; val taxF = 1 + (it.taxRate/100); val unitBase = unitInc / taxF; val rowInc = unitInc * it.qty; val rowBase = unitBase * it.qty; val rowTax = rowInc - rowBase
-        gTotal += rowInc; totalTaxable += rowBase; totalTax += rowTax
+        val serials = it.serial.split(",").filter { it.isNotBlank() }
+        val serialCount = serials.size
+        val rh = 20f + (serialCount * 12f)
+        val rowInc=it.qty*it.rate; val taxF=1+(it.taxRate/100); val rowBase=rowInc/taxF; val rowTax=rowInc-rowBase
+        gTotal+=rowInc; totalTaxable+=rowBase; totalTax+=rowTax
         c.drawText("${i+1}",c1+w1/2,y+14,p); p.textAlign=Paint.Align.LEFT
         c.drawText(it.desc,c2+5,y+14,p)
-        if(serialCount > 0) { val ps=Paint(p); ps.textSize=8f; c.drawText("SR/IMEI:", c2+5, y+24, ps); serials.forEachIndexed { idx, sn -> c.drawText(sn.trim(), c2+5, y+34+(idx*10), ps) } }
+        if(serialCount > 0) {
+            val ps=Paint(p); ps.textSize=8f
+            c.drawText("SR/IMEI:", c2+5, y+24, ps)
+            serials.forEachIndexed { idx, sn -> c.drawText(sn.trim(), c2+5, y+34+(idx*10), ps) }
+        }
         p.textAlign=Paint.Align.CENTER; c.drawText(it.hsn,c3+w3/2,y+14,p); c.drawText(it.qty.toString(),c4+w4/2,y+14,p)
-        c.drawText(String.format("%.2f",unitBase),c5+w5/2,y+14,p); c.drawText(it.unit,c6+w6/2,y+14,p)
-        p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f",rowBase),m+w-5,y+14,p); y+=rh
+        c.drawText(String.format("%.2f",rowBase),c5+w5/2,y+14,p); c.drawText(it.unit,c6+w6/2,y+14,p)
+        p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f",rowBase*it.qty),m+w-5,y+14,p); y+=rh
     }
     val fTop=m+h-200f; vLine(tTop+hH,fTop); c.drawLine(m,fTop,m+w,fTop,bp); y=fTop; val tX=c7; p.textAlign=Paint.Align.RIGHT
     fun row(l:String,v:String){c.drawText(l,tX-10,y+14,p);c.drawText(v,m+w-5,y+14,p);c.drawLine(tX,y,tX,y+20,bp);c.drawLine(tX,y+20,m+w,y+20,bp);y+=20f}
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
-    y += 20f; var footerY = fTop + 20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
+
+    y += 20f
+    var footerY = fTop + 20
+    p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,footerY,p)
     if(sBank.isNotEmpty()){ val bankY = footerY + 40; c.drawLine(m,bankY,tX,bankY,bp); c.drawText("Bank Details:",m+5,bankY-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p); footerY += 40 }
     val decY = footerY + 40
@@ -278,26 +317,15 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("Declaration: We declare this invoice shows the actual price of goods.",m+5,decY+12,p)
     c.drawText("Subject to $sJuris Jurisdiction",m+5,decY+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,decY+35,p)
+
     val sigY=max(decY, y); c.drawLine(c5,sigY,m+w,sigY,bp); c.drawLine(c5,sigY,c5,m+h,bp); c.drawLine(tX,fTop,tX,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+20,p); c.drawText("Authorised Signatory",sigX,m+h-10,p)
-    p.isFakeBoldText=false; p.textSize=8f; c.drawText("Computer generated invoice.",midX,m+h+15,p)
-
-    // SAVE JSON & PDF (SYNCED TIMESTAMP)
-    val ts = System.currentTimeMillis()
-    val n=if(isQuote)"Quote" else "Inv"; val fName = "${n}_$ts"
-    if (!isQuote) {
-        val jsonFile = File(ctx.filesDir, "$fName.json")
-        val j=JSONObject(); j.put("inv",invNo); j.put("d",date); j.put("bName",bName); j.put("bGst",bGst);
-        j.put("bAddr", bAddr); j.put("bState", bState); j.put("payMode", payMode); j.put("delNote", delNote)
-        val jItems = org.json.JSONArray(); items.forEach { jItems.put(JSONObject().put("d",it.desc).put("s",it.serial).put("h",it.hsn).put("q",it.qty).put("r",it.rate).put("t",it.taxRate).put("u",it.unit)) }
-        j.put("items", jItems); j.put("total",gTotal); j.put("tax",totalTax); jsonFile.writeText(j.toString())
-    }
-
-    val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"$fName.pdf")
-    f.outputStream().use { doc.writeTo(it) } // SAFE PDF SAVE
-    doc.close()
-    Toast.makeText(ctx, "Saved to Documents", Toast.LENGTH_LONG).show() // SUCCESS TOAST
+    c.drawText("For, $sName",sigX,sigY+20,p)
+    c.drawText("Authorised Signatory",sigX,m+h-10,p)
+    p.isFakeBoldText=false; p.textSize=8f
+    c.drawText("Computer generated invoice.",midX,m+h+15,p)
+    doc.finishPage(page); val n=if(isQuote)"Quote" else "Inv"; val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"${n}_${System.currentTimeMillis()}.pdf")
+    doc.writeTo(FileOutputStream(f)); doc.close()
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
 }
