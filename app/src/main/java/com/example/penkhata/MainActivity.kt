@@ -222,31 +222,16 @@ fun InvoiceScreen(isQuote: Boolean, editData: JSONObject?) {
 
 // --- LOGIC ---
 fun loadGstData(ctx: Context): Map<String,String> { var total=0.0; var tax=0.0; ctx.filesDir.listFiles()?.filter{it.name.startsWith("inv_")}?.forEach{val j=JSONObject(it.readText()); total+=j.getDouble("total"); tax+=j.getDouble("tax")}; return mapOf("total" to String.format("%.2f",total),"tax" to String.format("%.2f",tax)) }
-fun saveInvoiceData(ctx: Context, invNo: String, bName: String, bGst: String, items: List<InvItem>) { /* Handled in createPdf for Sync */ }
+fun saveInvoiceData(ctx: Context, invNo: String, bName: String, bGst: String, items: List<InvItem>, timestamp: Long) {
+    val fName = "Inv_$timestamp"
+    val j=JSONObject(); j.put("d",SimpleDateFormat("yyyy-MM-dd").format(Date())); j.put("inv",invNo); j.put("bName",bName); j.put("bGst",bGst);
+    var t=0.0; var x=0.0; val ja=org.json.JSONArray(); items.forEach{val v=it.qty*it.rate; t+=v; x+=v-(v/(1+it.taxRate/100)); val i=JSONObject(); i.put("d",it.desc); i.put("s",it.serial); i.put("h",it.hsn); i.put("q",it.qty); i.put("r",it.rate); i.put("u",it.unit); i.put("t",it.taxRate); ja.put(i)}; j.put("total",t); j.put("tax",x); j.put("items",ja); File(ctx.filesDir,"$fName.json").writeText(j.toString())
+}
 fun saveLedgerEntry(ctx: Context, e: LedgerEntry) { val j=JSONObject(); j.put("id",e.id); j.put("date",e.date); j.put("party",e.party); j.put("type",e.type); j.put("amt",e.amount); j.put("desc",e.desc); File(ctx.filesDir,"led_${e.id}.json").writeText(j.toString()) }
 fun deleteLedgerEntry(ctx: Context, id: Long) { ctx.filesDir.listFiles()?.find { it.name == "led_$id.json" }?.delete() }
 fun loadLedger(ctx: Context): List<LedgerEntry> { val l=mutableListOf<LedgerEntry>(); ctx.filesDir.listFiles()?.filter{it.name.startsWith("led_")}?.forEach{val j=JSONObject(it.readText()); l.add(LedgerEntry(j.optLong("id"),j.getString("date"),j.getString("party"),j.getString("type"),j.getDouble("amt"),j.getString("desc")))}; return l }
-
-fun createGstExcel(ctx: Context, filter: String) {
-    val sb = StringBuilder(); sb.append("Date,Invoice No,Buyer,GSTIN,Total Amount,Tax Amount\n")
-    ctx.filesDir.listFiles()?.filter { it.name.startsWith("inv_") }?.forEach {
-        val j = JSONObject(it.readText());
-        sb.append("${j.getString("d")},${j.getString("inv")},${j.optString("bName")},${j.optString("bGst")},${j.getDouble("total")},${j.getDouble("tax")}\n")
-    }
-    val f = File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "GST_Report_${System.currentTimeMillis()}.csv")
-    f.writeText(sb.toString())
-    Toast.makeText(ctx, "Excel Saved!", Toast.LENGTH_LONG).show()
-    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/csv";putExtra(Intent.EXTRA_STREAM,FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f));addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"Share Excel"))
-}
-fun createLedgerPdf(ctx: Context, data: List<LedgerEntry>, type: String) {
-    val doc = PdfDocument(); val page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, 1).create())
-    val c = page.canvas; val p = Paint(); p.textSize=12f; var y=50f
-    c.drawText("LEDGER REPORT", 20f, y, p); y+=30f
-    c.drawText("Date | Party | Type | Amount", 20f, y, p); y+=20f
-    data.forEach { c.drawText("${it.date} | ${it.party} | ${it.type} | ${it.amount}", 20f, y, p); y+=20f }
-    doc.finishPage(page); val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"Ledger_Report.pdf"); f.outputStream().use{doc.writeTo(it)}; doc.close()
-    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
-}
+fun createGstExcel(ctx: Context, filter: String) { val sb=StringBuilder(); sb.append("Date,Inv,Buyer,GST,Total,Tax\n"); ctx.filesDir.listFiles()?.filter{it.name.startsWith("Inv_")}?.forEach{val j=JSONObject(it.readText()); sb.append("${j.getString("d")},${j.getString("inv")},${j.optString("bName")},${j.optString("bGst")},${j.getDouble("total")},${j.getDouble("tax")}\n")}; val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"Report.csv"); f.writeText(sb.toString()); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/csv";putExtra(Intent.EXTRA_STREAM,FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f));addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"Share Excel")) }
+fun createLedgerPdf(ctx: Context, data: List<LedgerEntry>, type: String) { val doc=PdfDocument(); val page=doc.startPage(PdfDocument.PageInfo.Builder(595,842,1).create()); val c=page.canvas; val p=Paint(); p.textSize=12f; var y=50f; c.drawText("LEDGER",20f,y,p); y+=30f; data.forEach{c.drawText("${it.date} | ${it.party} | ${it.type} | ${it.amount}",20f,y,p); y+=20f}; doc.finishPage(page); val f=File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),"Ledger.pdf"); f.outputStream().use{doc.writeTo(it)}; doc.close(); ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View")) }
 
 fun convertToWords(num: Long): String {
     if(num==0L) return "Zero Rupees Only"
@@ -272,7 +257,7 @@ fun drawMultiLineText(c: Canvas, text: String, x: Float, y: Float, p: Paint, wid
 
 fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMode: String, delNote: String,
               sName: String, sAddr: String, sGst: String, sBank: String, sIfsc: String, sJuris: String,
-              bName: String, bAddr: String, bGst: String, bState: String, items: List<InvItem>, timestamp: Long = System.currentTimeMillis()) {
+              bName: String, bAddr: String, bGst: String, bState: String, items: List<InvItem>, timestamp: Long) {
     val doc = PdfDocument(); val page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, 1).create())
     val c = page.canvas; val p = Paint(); val bp = Paint().apply{style=Paint.Style.STROKE; strokeWidth=1f}
     val m=20f; val w=555f; val h=800f; val midX=m+w/2
@@ -284,22 +269,13 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawLine(midX, r1, midX, r1+rH, bp); c.drawLine(m, r1+rH/2, m+w, r1+rH/2, bp)
     p.textAlign=Paint.Align.LEFT; p.textSize=12f; p.isFakeBoldText=true
     c.drawText(sName, m+5, r1+15, p); p.isFakeBoldText=false; p.textSize=10f
-
-    var sY = r1+30
-    sY = drawMultiLineText(c, sAddr, m+5, sY, p, w/2-10)
-    c.drawText("GSTIN: $sGst", m+5, sY+15, p)
-
-    var currY = r1+rH/2+15
-    c.drawText("Buyer: $bName", m+5, currY, p); currY += 15
-    currY = drawMultiLineText(c, bAddr, m+5, currY, p, w/2-10)
-    if(bGst.isNotEmpty()) { c.drawText("GSTIN: $bGst", m+5, currY, p); currY += 15 }
-    if(bState.isNotEmpty()) { c.drawText("State: $bState", m+5, currY, p) }
-
+    var sY = r1+30; sY = drawMultiLineText(c, sAddr, m+5, sY, p, w/2-10); c.drawText("GSTIN: $sGst", m+5, sY+15, p)
+    var currY = r1+rH/2+15; c.drawText("Buyer: $bName", m+5, currY, p); currY += 15
+    currY = drawMultiLineText(c, bAddr, m+5, currY, p, w/2-10); if(bGst.isNotEmpty()) { c.drawText("GSTIN: $bGst", m+5, currY, p); currY += 15 }; if(bState.isNotEmpty()) { c.drawText("State: $bState", m+5, currY, p) }
     val qX=midX+w/4; val line1=r1+rH/4; val line2=r1+2*rH/4; val line3=r1+3*rH/4
     c.drawLine(midX,line1,m+w,line1,bp); c.drawLine(midX,line2,m+w,line2,bp); c.drawLine(midX,line3,m+w,line3,bp); c.drawLine(qX,r1,qX,r1+rH,bp)
     fun cell(l:String, v:String, x:Float, y:Float) { c.drawText(l,x+2,y+12,p); p.isFakeBoldText=true; c.drawText(v,qX+2,y+12,p); p.isFakeBoldText=false }
     cell("No",invNo,midX,r1); cell("Date",date,midX,line1); cell("Note",delNote,midX,line2); cell("Terms",payMode,midX,line3)
-
     val tTop=r1+rH; val hH=20f; c.drawLine(m,tTop,m+w,tTop,bp); c.drawLine(m,tTop+hH,m+w,tTop+hH,bp)
     val c1=m;val w1=30f;val c2=c1+w1;val w2=200f;val c3=c2+w2;val w3=50f;val c4=c3+w3;val w4=60f;val c5=c4+w4;val w5=70f;val c6=c5+w5;val w6=50f;val c7=c6+w6;val w7=95f
     fun vLine(top:Float,bot:Float){c.drawLine(c2,top,c2,bot,bp);c.drawLine(c3,top,c3,bot,bp);c.drawLine(c4,top,c4,bot,bp);c.drawLine(c5,top,c5,bot,bp);c.drawLine(c6,top,c6,bot,bp);c.drawLine(c7,top,c7,bot,bp)}
@@ -307,53 +283,32 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
     c.drawText("SI",c1+w1/2,tTop+14,p); c.drawText("Desc",c2+w2/2,tTop+14,p); c.drawText("HSN",c3+w3/2,tTop+14,p); c.drawText("Qty",c4+w4/2,tTop+14,p); c.drawText("Rate",c5+w5/2,tTop+14,p); c.drawText("Per",c6+w6/2,tTop+14,p); c.drawText("Amt",c7+w7/2,tTop+14,p)
     p.isFakeBoldText=false; var y=tTop+hH; var gTotal=0.0; var totalTaxable=0.0; var totalTax=0.0
     items.forEachIndexed{i,it->
-        // --- DYNAMIC STACKING LOGIC ---
-        val serials = it.serial.split(",").filter { it.isNotBlank() }
-        val serialCount = serials.size
-        val rh = 20f + (serialCount * 12f) // Height grows with IMEIs
-
-        val rowInc=it.qty*it.rate; val taxF=1+(it.taxRate/100); val rowBase=rowInc/taxF; val rowTax=rowInc-rowBase
-        gTotal+=rowInc; totalTaxable+=rowBase; totalTax+=rowTax
+        val serials = it.serial.split(",").filter { it.isNotBlank() }; val serialCount = serials.size; val rh = 20f + (serialCount * 12f)
+        val unitInc = it.rate; val taxF = 1 + (it.taxRate/100); val unitBase = unitInc / taxF; val rowInc = unitInc * it.qty; val rowBase = unitBase * it.qty; val rowTax = rowInc - rowBase
+        gTotal += rowInc; totalTaxable += rowBase; totalTax += rowTax
         c.drawText("${i+1}",c1+w1/2,y+14,p); p.textAlign=Paint.Align.LEFT
         c.drawText(it.desc,c2+5,y+14,p)
-
-        // DRAW STACKED IMEIS
-        if(serialCount > 0) {
-            val ps=Paint(p); ps.textSize=8f
-            c.drawText("SR/IMEI:", c2+5, y+24, ps)
-            serials.forEachIndexed { idx, sn ->
-                c.drawText(sn.trim(), c2+5, y+34+(idx*10), ps) // 10px spacing per IMEI
-            }
-        }
-
+        if(serialCount > 0) { val ps=Paint(p); ps.textSize=8f; c.drawText("SR/IMEI:", c2+5, y+24, ps); serials.forEachIndexed { idx, sn -> c.drawText(sn.trim(), c2+5, y+34+(idx*10), ps) } }
         p.textAlign=Paint.Align.CENTER; c.drawText(it.hsn,c3+w3/2,y+14,p); c.drawText(it.qty.toString(),c4+w4/2,y+14,p)
-        c.drawText(String.format("%.2f",rowBase),c5+w5/2,y+14,p); c.drawText(it.unit,c6+w6/2,y+14,p)
-        p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f",rowBase*it.qty),m+w-5,y+14,p); y+=rh
+        c.drawText(String.format("%.2f",unitBase),c5+w5/2,y+14,p); c.drawText(it.unit,c6+w6/2,y+14,p)
+        p.textAlign=Paint.Align.RIGHT; c.drawText(String.format("%.2f",rowBase),m+w-5,y+14,p); y+=rh
     }
     val fTop=m+h-200f; vLine(tTop+hH,fTop); c.drawLine(m,fTop,m+w,fTop,bp); y=fTop; val tX=c7; p.textAlign=Paint.Align.RIGHT
     fun row(l:String,v:String){c.drawText(l,tX-10,y+14,p);c.drawText(v,m+w-5,y+14,p);c.drawLine(tX,y,tX,y+20,bp);c.drawLine(tX,y+20,m+w,y+20,bp);y+=20f}
     row("Total Value",String.format("%.2f",totalTaxable)); row("SGST",String.format("%.2f",totalTax/2)); row("CGST",String.format("%.2f",totalTax/2))
     p.isFakeBoldText=true; c.drawText("Grand Total",tX-10,y+14,p); c.drawText("₹ ${String.format("%.0f",gTotal)}",m+w-5,y+14,p);
-
-    y += 20f
-    var footerY = fTop + 20
-    p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
+    y += 20f; var footerY = fTop + 20; p.textAlign=Paint.Align.LEFT; p.isFakeBoldText=false
     c.drawText("Amount: ${convertToWords(gTotal.toLong())}",m+5,footerY,p)
     if(sBank.isNotEmpty()){ val bankY = footerY + 40; c.drawLine(m,bankY,tX,bankY,bp); c.drawText("Bank Details:",m+5,bankY-25,p); p.isFakeBoldText=true; c.drawText("$sBank | $sIfsc",m+5,bankY-10,p); footerY += 40 }
-    val decY = footerY + 40
-    c.drawLine(m,decY,tX,decY,bp)
-    p.isFakeBoldText=false; p.textSize=8f
+    val decY = footerY + 40; c.drawLine(m,decY,tX,decY,bp); p.isFakeBoldText=false; p.textSize=8f
     c.drawText("Declaration: We declare this invoice shows the actual price of goods.",m+5,decY+12,p)
     c.drawText("Subject to $sJuris Jurisdiction",m+5,decY+22,p); p.isFakeBoldText=true
     c.drawText("GOODS ONCE SOLD CANNOT BE RETURNED",m+5,decY+35,p)
-
     val sigY=max(decY, y); c.drawLine(c5,sigY,m+w,sigY,bp); c.drawLine(c5,sigY,c5,m+h,bp); c.drawLine(tX,fTop,tX,sigY,bp)
     p.textSize=10f; p.isFakeBoldText=true; p.textAlign=Paint.Align.CENTER
     val sigX = (c5 + m + w) / 2
-    c.drawText("For, $sName",sigX,sigY+20,p)
-    c.drawText("Authorised Signatory",sigX,m+h-10,p)
-    p.isFakeBoldText=false; p.textSize=8f
-    c.drawText("Computer generated invoice.",midX,m+h+15,p)
+    c.drawText("For, $sName",sigX,sigY+20,p); c.drawText("Authorised Signatory",sigX,m+h-10,p)
+    p.isFakeBoldText=false; p.textSize=8f; c.drawText("Computer generated invoice.",midX,m+h+15,p)
 
     doc.finishPage(page)
 
@@ -378,6 +333,7 @@ fun createPdf(ctx: Context, isQuote: Boolean, invNo: String, date: String, payMo
         val f = File(dir, "$fName.pdf")
         f.outputStream().use { doc.writeTo(it) } // SAFE WRITE
         doc.close()
+        Toast.makeText(ctx, "Saved to Documents", Toast.LENGTH_LONG).show()
 
         // Open the file
         ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply{setDataAndType(FileProvider.getUriForFile(ctx,"${ctx.packageName}.provider",f),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)},"View"))
